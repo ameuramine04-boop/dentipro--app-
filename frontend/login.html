@@ -4,17 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DentiPro — Connexion</title>
+
+  <!--
+    IMPORTANT : script.js est chargé EN BAS DU BODY (avant </body>)
+    pour éviter tout conflit avec le code inline de cette page.
+    Le module IIFE dans script.js ne s'exécute qu'après DOMContentLoaded
+    et détecte automatiquement qu'on est sur login.html.
+  -->
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap" rel="stylesheet">
+
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    
+
     :root {
-      --navy: #0B1D3A;
-      --navy-2: #112244;
-      --coral: #E8614B;
+      --navy:    #0B1D3A;
+      --navy-2:  #112244;
+      --coral:   #E8614B;
       --coral-d: #d44e38;
-      --mint: #00B89C;
+      --mint:    #00B89C;
       --font-head: 'Sora', system-ui, sans-serif;
       --font-body: 'DM Sans', system-ui, sans-serif;
     }
@@ -28,7 +37,7 @@
       overflow: hidden;
     }
 
-    /* ── LEFT VISUAL PANEL ── */
+    /* ── Panneau visuel gauche ── */
     .login-visual {
       flex: 1;
       position: relative;
@@ -36,8 +45,6 @@
       flex-direction: column;
       overflow: hidden;
     }
-
-    /* Hero photo */
     .visual-photo {
       position: absolute;
       inset: 0;
@@ -49,15 +56,8 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(
-        115deg,
-        rgba(11, 29, 58, 0.9) 0%,
-        rgba(11, 29, 58, 0.7) 50%,
-        rgba(232, 97, 75, 0.3) 100%
-      );
+      background: linear-gradient(115deg, rgba(11,29,58,.9) 0%, rgba(11,29,58,.7) 50%, rgba(232,97,75,.3) 100%);
     }
-
-    /* Content over photo */
     .visual-content {
       position: relative;
       z-index: 1;
@@ -66,8 +66,6 @@
       height: 100%;
       padding: 52px 56px;
     }
-
-    /* Logo */
     .visual-logo {
       display: flex;
       align-items: center;
@@ -91,11 +89,7 @@
       letter-spacing: -.5px;
     }
     .visual-logo-text span { color: var(--coral); }
-
-    /* Main headline */
-    .visual-headline {
-      margin: auto 0 0;
-    }
+    .visual-headline { margin: auto 0 0; }
     .visual-tag {
       display: inline-flex;
       align-items: center;
@@ -112,7 +106,6 @@
     }
     .visual-tag-dot { width: 8px; height: 8px; background: var(--mint); border-radius: 50%; animation: blink 2s ease-in-out infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-    
     .visual-h1 {
       font-family: var(--font-head);
       font-size: clamp(32px, 4vw, 50px);
@@ -129,7 +122,6 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-
     .visual-desc {
       font-size: 16px;
       color: rgba(255,255,255,.55);
@@ -137,14 +129,7 @@
       max-width: 400px;
       margin-bottom: 36px;
     }
-
-    /* Feature chips */
-    .visual-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 44px;
-    }
+    .visual-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 44px; }
     .chip {
       display: flex;
       align-items: center;
@@ -157,61 +142,26 @@
       font-weight: 600;
       color: rgba(255,255,255,.8);
       backdrop-filter: blur(4px);
-      transition: all .2s ease;
+      transition: all .2s;
     }
     .chip:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.24); }
-    .chip-icon { font-size: 15px; }
-
-    /* Stats row */
-    .visual-stats {
-      display: flex;
-      gap: 28px;
-      padding: 20px 0;
-      border-top: 1px solid rgba(255,255,255,.1);
-    }
+    .visual-stats { display: flex; gap: 28px; padding: 20px 0; border-top: 1px solid rgba(255,255,255,.1); }
     .stat { display: flex; flex-direction: column; gap: 3px; }
-    .stat-num {
-      font-family: var(--font-head);
-      font-size: 26px;
-      font-weight: 800;
-      color: #fff;
-      letter-spacing: -.5px;
-    }
+    .stat-num { font-family: var(--font-head); font-size: 26px; font-weight: 800; color: #fff; letter-spacing: -.5px; }
     .stat-label { font-size: 12px; color: rgba(255,255,255,.45); font-weight: 500; }
 
-    /* Photo grid overlay */
-    .visual-photo-grid {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      width: 45%;
-      height: 55%;
-      z-index: 0;
-      opacity: 0.22;
-      overflow: hidden;
-    }
-    .visual-photo-grid img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      mask-image: linear-gradient(to top left, rgba(0,0,0,.9), transparent);
-      -webkit-mask-image: linear-gradient(to top left, rgba(0,0,0,.9), transparent);
-    }
-
-    /* ── RIGHT FORM PANEL ── */
+    /* ── Panneau formulaire droit ── */
     .login-form-panel {
       width: 460px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 52px 52px;
+      padding: 52px;
       background: #FAFBFF;
       position: relative;
     }
-
     .form-box { width: 100%; max-width: 360px; margin: 0 auto; }
-
     .form-greeting { margin-bottom: 34px; }
     .form-greeting-eyebrow {
       font-size: 12px;
@@ -229,29 +179,11 @@
       letter-spacing: -.6px;
       margin-bottom: 6px;
     }
-    .form-greeting-sub {
-      font-size: 14px;
-      color: #6B7A99;
-    }
-
-    /* Form */
+    .form-greeting-sub { font-size: 14px; color: #6B7A99; }
     .field-wrap { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
-    .field-label {
-      font-size: 11.5px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      color: #6B7A99;
-    }
+    .field-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #6B7A99; }
     .field-input-wrap { position: relative; }
-    .field-icon {
-      position: absolute;
-      left: 14px; top: 50%;
-      transform: translateY(-50%);
-      font-size: 16px;
-      pointer-events: none;
-      opacity: .5;
-    }
+    .field-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; pointer-events: none; opacity: .5; }
     .field-input {
       width: 100%;
       background: #F4F6FA;
@@ -264,7 +196,6 @@
       font-family: var(--font-body);
       outline: none;
       transition: border-color .18s, background .18s, box-shadow .18s;
-      height: auto;
     }
     .field-input::placeholder { color: #A0AEC0; }
     .field-input:focus {
@@ -282,27 +213,9 @@
       transition: color .15s;
     }
     .toggle-pwd:hover { color: var(--navy); }
-
-    .form-options {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 26px;
-    }
-    .remember-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13.5px;
-      color: #6B7A99;
-      cursor: pointer;
-    }
-    .remember-label input[type="checkbox"] {
-      width: 16px; height: 16px;
-      accent-color: var(--coral);
-      cursor: pointer;
-    }
-
+    .form-options { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+    .remember-label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #6B7A99; cursor: pointer; }
+    .remember-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--coral); cursor: pointer; }
     .btn-submit {
       width: 100%;
       padding: 15px;
@@ -319,22 +232,9 @@
       position: relative;
       overflow: hidden;
     }
-    .btn-submit::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(255,255,255,.15), transparent);
-      opacity: 0;
-      transition: opacity .18s;
-    }
-    .btn-submit:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 34px rgba(232,97,75,.55);
-    }
-    .btn-submit:hover::before { opacity: 1; }
+    .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(232,97,75,.55); }
     .btn-submit:active { transform: translateY(0); }
-    .btn-submit.loading { opacity: .7; pointer-events: none; }
-
+    .btn-submit:disabled { opacity: .7; cursor: not-allowed; transform: none; }
     #errorMsg {
       min-height: 22px;
       font-size: 13.5px;
@@ -342,13 +242,7 @@
       color: var(--coral);
       text-align: center;
       margin-top: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
     }
-
-    /* Trust badges */
     .form-trust {
       display: flex;
       align-items: center;
@@ -358,16 +252,7 @@
       padding-top: 22px;
       border-top: 1px solid #EEF2F8;
     }
-    .trust-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: #A0AEC0;
-      font-weight: 600;
-    }
-
-    /* Floating badge */
+    .trust-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #A0AEC0; font-weight: 600; }
     .form-badge {
       display: inline-flex;
       align-items: center;
@@ -381,31 +266,18 @@
       color: var(--mint);
       margin-bottom: 22px;
     }
+    .form-footer { margin-top: 24px; text-align: center; font-size: 12px; color: #A0AEC0; }
 
-    /* Footer */
-    .form-footer {
-      margin-top: 24px;
-      text-align: center;
-      font-size: 12px;
-      color: #A0AEC0;
-    }
-
-    /* Animations */
     @keyframes riseIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    .chip { animation: riseIn .5s ease both; }
-    .chip:nth-child(1) { animation-delay: .1s; }
-    .chip:nth-child(2) { animation-delay: .18s; }
-    .chip:nth-child(3) { animation-delay: .26s; }
-    .chip:nth-child(4) { animation-delay: .34s; }
-    
-    .visual-h1 { animation: riseIn .6s ease both; animation-delay: .05s; }
-    .visual-desc { animation: riseIn .6s ease both; animation-delay: .12s; }
-    
-    .form-greeting { animation: riseIn .5s ease both; }
-    .field-wrap:nth-child(1) { animation: riseIn .4s ease both; animation-delay: .1s; }
-    .field-wrap:nth-child(2) { animation: riseIn .4s ease both; animation-delay: .18s; }
-    .form-options { animation: riseIn .4s ease both; animation-delay: .26s; }
-    .btn-submit { animation: riseIn .5s ease both; animation-delay: .32s; }
+    .visual-h1      { animation: riseIn .6s ease both .05s; }
+    .visual-desc    { animation: riseIn .6s ease both .12s; }
+    .chip           { animation: riseIn .5s ease both; }
+    .chip:nth-child(1){ animation-delay: .10s; }
+    .chip:nth-child(2){ animation-delay: .18s; }
+    .chip:nth-child(3){ animation-delay: .26s; }
+    .chip:nth-child(4){ animation-delay: .34s; }
+    .form-greeting  { animation: riseIn .5s ease both; }
+    .btn-submit     { animation: riseIn .5s ease both .32s; }
 
     @media (max-width: 900px) {
       .login-visual { display: none; }
@@ -415,61 +287,44 @@
 </head>
 <body>
 
-  <!-- VISUAL LEFT PANEL -->
+  <!-- ── Panneau visuel gauche ── -->
   <div class="login-visual">
     <div class="visual-photo"></div>
-    
     <div class="visual-content">
-      <!-- Logo -->
       <div class="visual-logo">
         <div class="visual-logo-icon">🦷</div>
         <div class="visual-logo-text">Denti<span>Pro</span></div>
       </div>
-
-      <!-- Headline -->
       <div class="visual-headline">
         <div class="visual-tag">
           <div class="visual-tag-dot"></div>
           Logiciel de gestion dentaire
         </div>
-        <h1 class="visual-h1">
-          La gestion<br>de votre cabinet<br><em>simplifiée.</em>
-        </h1>
+        <h1 class="visual-h1">La gestion<br>de votre cabinet<br><em>simplifiée.</em></h1>
         <p class="visual-desc">
-          Patients, rendez-vous, facturation et imagerie — 
+          Patients, rendez-vous, facturation et imagerie —
           tout ce dont vous avez besoin pour gérer votre cabinet dentaire avec efficacité.
         </p>
         <div class="visual-chips">
-          <div class="chip"><span class="chip-icon">📅</span> Agenda intelligent</div>
-          <div class="chip"><span class="chip-icon">🦷</span> Schéma dentaire</div>
-          <div class="chip"><span class="chip-icon">💰</span> Facturation</div>
-          <div class="chip"><span class="chip-icon">🩻</span> Imagerie patient</div>
+          <div class="chip"><span>📅</span> Agenda intelligent</div>
+          <div class="chip"><span>🦷</span> Schéma dentaire</div>
+          <div class="chip"><span>💰</span> Facturation</div>
+          <div class="chip"><span>🩻</span> Imagerie patient</div>
         </div>
         <div class="visual-stats">
-          <div class="stat">
-            <div class="stat-num">100%</div>
-            <div class="stat-label">Sécurisé</div>
-          </div>
-          <div class="stat">
-            <div class="stat-num">24/7</div>
-            <div class="stat-label">Disponible</div>
-          </div>
-          <div class="stat">
-            <div class="stat-num">∞</div>
-            <div class="stat-label">Patients</div>
-          </div>
+          <div class="stat"><div class="stat-num">100%</div><div class="stat-label">Sécurisé</div></div>
+          <div class="stat"><div class="stat-num">24/7</div><div class="stat-label">Disponible</div></div>
+          <div class="stat"><div class="stat-num">∞</div><div class="stat-label">Patients</div></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- FORM RIGHT PANEL -->
+  <!-- ── Panneau formulaire droit ── -->
   <div class="login-form-panel">
     <div class="form-box">
 
-      <div class="form-badge">
-        ✅ Système DentiPro v2
-      </div>
+      <div class="form-badge">✅ Système Denti-Professionnel</div>
 
       <div class="form-greeting">
         <div class="form-greeting-eyebrow">Bienvenue</div>
@@ -477,12 +332,21 @@
         <div class="form-greeting-sub">Accédez à votre espace professionnel</div>
       </div>
 
-      <form id="loginForm">
+      <form id="loginForm" novalidate>
         <div class="field-wrap">
           <label class="field-label" for="username">Identifiant</label>
           <div class="field-input-wrap">
             <span class="field-icon">👤</span>
-            <input class="field-input" type="text" id="username" placeholder="Votre identifiant" autocomplete="username" required>
+            <input
+              class="field-input"
+              type="text"
+              id="username"
+              name="username"
+              placeholder="Votre identifiant"
+              autocomplete="username"
+              required
+              autofocus
+            >
           </div>
         </div>
 
@@ -490,8 +354,22 @@
           <label class="field-label" for="password">Mot de passe</label>
           <div class="field-input-wrap">
             <span class="field-icon">🔑</span>
-            <input class="field-input" type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
-            <button type="button" class="toggle-pwd" onclick="togglePassword()" id="togglePwdBtn" title="Afficher">👁</button>
+            <input
+              class="field-input"
+              type="password"
+              id="password"
+              name="password"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              required
+            >
+            <button
+              type="button"
+              class="toggle-pwd"
+              id="togglePwdBtn"
+              title="Afficher le mot de passe"
+              aria-label="Afficher/masquer le mot de passe"
+            >👁</button>
           </div>
         </div>
 
@@ -506,7 +384,7 @@
           Accéder au cabinet →
         </button>
 
-        <p id="errorMsg"></p>
+        <p id="errorMsg" role="alert" aria-live="polite"></p>
       </form>
 
       <div class="form-trust">
@@ -515,31 +393,109 @@
         <div class="trust-item">⚡ Accès immédiat</div>
       </div>
 
-      <div class="form-footer">
-        DentiPro © 2025 — Cabinet dentaire professionnel
-      </div>
+      <div class="form-footer">DentiPro © 2025 — Cabinet dentaire professionnel</div>
     </div>
   </div>
 
+  <!--
+    script.js chargé EN DERNIER :
+    - Le module IIFE s'enveloppe dans DOMContentLoaded → pas de race condition
+    - Sur login.html, Auth.checkAuth() redirige si token déjà présent
+    - La logique de login ci-dessous s'attache APRÈS le DOM (defer)
+  -->
   <script src="script.js"></script>
+
   <script>
-    function togglePassword() {
-      const input = document.getElementById('password');
-      const btn = document.getElementById('togglePwdBtn');
-      input.type = input.type === 'password' ? 'text' : 'password';
-      btn.textContent = input.type === 'password' ? '👁' : '🙈';
-    }
-    document.getElementById('loginForm')?.addEventListener('submit', function() {
-      const btn = document.getElementById('loginBtn');
-      btn.textContent = '⏳ Connexion en cours…';
-      btn.classList.add('loading');
-      setTimeout(() => {
-        if (btn.classList.contains('loading')) {
-          btn.textContent = 'Accéder au cabinet →';
-          btn.classList.remove('loading');
-        }
-      }, 4000);
-    });
+    /*
+     * Code spécifique à login.html.
+     * NE PAS déclarer const/let/var avec les mêmes noms que script.js —
+     * tout est dans un bloc autonome.
+     */
+    (function loginPage() {
+      "use strict";
+
+      const API_URL =
+        window.location?.origin
+          ? `${window.location.origin}/api`
+          : "http://localhost:3000/api";
+
+      // ── Bouton afficher/masquer mot de passe ──────────────
+      const toggleBtn  = document.getElementById("togglePwdBtn");
+      const pwdInput   = document.getElementById("password");
+
+      if (toggleBtn && pwdInput) {
+        toggleBtn.addEventListener("click", function () {
+          const isHidden = pwdInput.type === "password";
+          pwdInput.type      = isHidden ? "text" : "password";
+          toggleBtn.textContent = isHidden ? "🙈" : "👁";
+          toggleBtn.title    = isHidden ? "Masquer le mot de passe" : "Afficher le mot de passe";
+        });
+      }
+
+      // ── Soumission du formulaire ──────────────────────────
+      const loginForm = document.getElementById("loginForm");
+      const loginBtn  = document.getElementById("loginBtn");
+      const errorMsg  = document.getElementById("errorMsg");
+
+      if (loginForm) {
+        loginForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const username = document.getElementById("username")?.value?.trim();
+          const password = pwdInput?.value || "";
+
+          // Validation côté client
+          if (!username || !password) {
+            errorMsg.textContent = "⚠️ Veuillez remplir tous les champs.";
+            return;
+          }
+
+          // État chargement
+          loginBtn.disabled     = true;
+          loginBtn.textContent  = "⏳ Connexion en cours…";
+          errorMsg.textContent  = "";
+
+          try {
+            const res  = await fetch(`${API_URL}/login`, {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ username, password }),
+            });
+            const json = await res.json();
+
+            // Accepte les deux formats : nouveau { status, data } et ancien { success, token }
+            const isOk    = res.ok && (json.status === "success" || json.success === true);
+            const token   = json.data?.token  || json.token;
+            const user    = json.data?.user   || json.user;
+
+            if (isOk && token) {
+              // Persiste la session
+              localStorage.setItem("token",  token);
+              localStorage.setItem("user",   JSON.stringify(user || {}));
+              localStorage.setItem("userId", String(user?.id || ""));
+
+              loginBtn.textContent = "✅ Connecté !";
+
+              // Redirection
+              setTimeout(() => {
+                window.location.href = "dashboard.html";
+              }, 400);
+            } else {
+              errorMsg.textContent = `⚠️ ${json.message || "Identifiants incorrects."}`;
+              loginBtn.disabled    = false;
+              loginBtn.textContent = "Accéder au cabinet →";
+            }
+          } catch (networkError) {
+            console.error("[Login] Erreur réseau :", networkError);
+            errorMsg.textContent = "❌ Impossible de contacter le serveur. Vérifiez votre connexion.";
+            loginBtn.disabled    = false;
+            loginBtn.textContent = "Accéder au cabinet →";
+          }
+        });
+      }
+
+    })(); // Fin loginPage
   </script>
+
 </body>
 </html>

@@ -54,9 +54,11 @@ def query_all(sql: str, params=None):
         with conn.cursor() as cur:
             cur.execute(sql, params or ())
             return cur.fetchall()
+    except Exception as e:
+        print(f"❌ Erreur SQL (query_all): {e}")
+        return []
     finally:
         conn.close()
-
 
 def execute(sql: str, params=None, fetch_last=False):
     conn = _conn()
@@ -65,8 +67,9 @@ def execute(sql: str, params=None, fetch_last=False):
             cur.execute(sql, params or ())
             conn.commit()
             return cur.lastrowid if fetch_last else None
-    except Exception:
+    except Exception as e:
         conn.rollback()
+        print(f"❌ Erreur SQL (execute): {e}")
         raise
     finally:
         conn.close()
@@ -129,8 +132,12 @@ def _month_bounds():
 
 def _auth_token():
     h = request.headers.get("Authorization") or ""
-    p = h.split()
-    return p[1] if len(p) > 1 else None
+    parts = h.split()
+    # Si le header est "Bearer TOKEN", on prend le TOKEN
+    if len(parts) > 1:
+        return parts[1]
+    # Sinon, on prend tout ce qui vient (cas où le JS envoie juste le TOKEN)
+    return h if h else None
 
 def require_auth(f):
     @wraps(f)

@@ -15,8 +15,6 @@ if (typeof _dpPage === "undefined")
   };
 
 // ── Variables globales UNIQUES ─────────────────────────────
-// (supprimez tout autre let/const/var pour ces noms dans le reste du fichier)
-var patients = [];
 var rdvs = [];
 var editPatientId = null;
 var editRdvId = null;
@@ -40,73 +38,103 @@ var _historiqueData = [];
 var _agendaCurrentDate = new Date();
 
 
+// 1. S'assure que la page actuelle est valide
 function dpEnsurePage(key, total) {
-  const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / DP_PAGE_SIZE) || 1);
-  let page = _dpPage[key] || 1;
-  if (page > totalPages) page = totalPages;
-  if (page < 1) page = 1;
-  _dpPage[key] = page;
-  return { page, totalPages };
+    const totalPages = Math.max(1, Math.ceil(total / DP_PAGE_SIZE));
+    let page = _dpPage[key] || 1;
+    if (page > totalPages) page = totalPages;
+    if (page < 1) page = 1;
+    _dpPage[key] = page;
+    return { page, totalPages };
 }
 
+// 2. Génère le HTML des boutons
 function dpPaginationRender(wrapId, key, page, totalPages, total) {
-  const wrap = document.getElementById(wrapId);
-  if (!wrap) return;
-  wrap.dataset.dpKey = key;
-  wrap.dataset.dpPage = String(page);
-  wrap.dataset.dpTotalPages = String(totalPages);
-  if (total === 0) { wrap.innerHTML = ""; wrap.style.display = "none"; return; }
-  wrap.style.display = "block";
-  const from = (page - 1) * DP_PAGE_SIZE + 1;
-  const to = Math.min(page * DP_PAGE_SIZE, total);
-  let startP = Math.max(1, page - 2);
-  const maxBtn = 5;
-  let endP = Math.min(totalPages, startP + maxBtn - 1);
-  if (endP - startP < maxBtn - 1) startP = Math.max(1, endP - maxBtn + 1);
-  const nums = [];
-  for (let p = startP; p <= endP; p++) nums.push(p);
-  const numBtns = nums
-    .map(
-      (p) =>
-        `<button type="button" class="dp-pg ${p === page ? "is-active" : ""}" data-dp-act="goto" data-dp-page="${p}" aria-label="Page ${p}">${p}</button>`
-    )
-    .join("");
-  wrap.innerHTML = `
-<div class="dp-pagination" role="navigation" aria-label="Pagination">
-  <div class="dp-pagination-meta"><span class="dp-pagination-range">${from}–${to}</span><span class="dp-pagination-total">sur ${total}</span></div>
-  <div class="dp-pagination-btns">
-    <button type="button" class="dp-pg dp-pg-edge" data-dp-act="first" ${page <= 1 ? "disabled" : ""} title="Première page">«</button>
-    <button type="button" class="dp-pg" data-dp-act="prev" ${page <= 1 ? "disabled" : ""} title="Page précédente">‹</button>
-    ${numBtns}
-    <button type="button" class="dp-pg" data-dp-act="next" ${page >= totalPages ? "disabled" : ""} title="Page suivante">›</button>
-    <button type="button" class="dp-pg dp-pg-edge" data-dp-act="last" ${page >= totalPages ? "disabled" : ""} title="Dernière page">»</button>
-  </div>
-</div>`;
+    const wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+
+    // On stocke les infos dans les datasets pour que le click-handler les retrouve
+    wrap.dataset.dpKey = key;
+    wrap.dataset.dpPage = String(page);
+    wrap.dataset.dpTotalPages = String(totalPages);
+
+    if (total === 0) {
+        wrap.innerHTML = "";
+        wrap.style.display = "none";
+        return;
+    }
+    
+    wrap.style.display = "block";
+    const from = (page - 1) * DP_PAGE_SIZE + 1;
+    const to = Math.min(page * DP_PAGE_SIZE, total);
+
+    // Calcul des numéros de pages à afficher (max 5 boutons)
+    let startP = Math.max(1, page - 2);
+    let endP = Math.min(totalPages, startP + 4);
+    if (endP - startP < 4) startP = Math.max(1, endP - 4);
+
+    let numBtns = "";
+    for (let p = startP; p <= endP; p++) {
+        numBtns += `<button type="button" class="dp-pg ${p === page ? "is-active" : ""}" data-dp-act="goto" data-dp-page="${p}">${p}</button>`;
+    }
+
+    wrap.innerHTML = `
+    <div class="dp-pagination">
+        <div class="dp-pagination-meta">
+            <span>Affichage <strong>${from}-${to}</strong> sur <strong>${total}</strong></span>
+        </div>
+        <div class="dp-pagination-btns">
+            <button type="button" class="dp-pg" data-dp-act="first" ${page <= 1 ? "disabled" : ""}>«</button>
+            <button type="button" class="dp-pg" data-dp-act="prev" ${page <= 1 ? "disabled" : ""}>‹</button>
+            ${numBtns}
+            <button type="button" class="dp-pg" data-dp-act="next" ${page >= totalPages ? "disabled" : ""}>›</button>
+            <button type="button" class="dp-pg" data-dp-act="last" ${page >= totalPages ? "disabled" : ""}>»</button>
+        </div>
+    </div>`;
 }
+
+// 3. Gère les clics sur les boutons (Une seule fois au chargement)
 function initDpPaginationClick() {
-  if (document.body.dataset.dpPaginationInit) return;
-  document.body.dataset.dpPaginationInit = "1";
-  document.body.addEventListener("click", function (e) {
-    const btn = e.target.closest(".dp-pg");
-    if (!btn || btn.disabled) return;
-    const wrap = btn.closest(".dp-pagination-wrap");
-    if (!wrap || !wrap.dataset.dpKey) return;
-    e.preventDefault();
-    const key = wrap.dataset.dpKey;
-    let p = parseInt(wrap.dataset.dpPage || "1", 10);
-    const tp = parseInt(wrap.dataset.dpTotalPages || "1", 10);
-    const act = btn.dataset.dpAct;
-    if (act === "first") p = 1;
-    else if (act === "prev") p = Math.max(1, p - 1);
-    else if (act === "next") p = Math.min(tp, p + 1);
-    else if (act === "last") p = tp;
-    else if (act === "goto") p = parseInt(btn.dataset.dpPage || "1", 10);
-    _dpPage[key] = p;
-    if (typeof window._dpRefresh === "object" && typeof window._dpRefresh[key] === "function")
-      window._dpRefresh[key]();
-  });
+    if (document.body.dataset.dpPaginationInit) return;
+    document.body.dataset.dpPaginationInit = "1";
+
+    document.body.addEventListener("click", function (e) {
+        const btn = e.target.closest(".dp-pg");
+        if (!btn || btn.disabled) return;
+
+        const wrap = btn.closest(".dp-pagination-wrap");
+        if (!wrap || !wrap.dataset.dpKey) return;
+
+        e.preventDefault();
+        const key = wrap.dataset.dpKey;
+        let p = parseInt(wrap.dataset.dpPage || "1", 10);
+        const tp = parseInt(wrap.dataset.dpTotalPages || "1", 10);
+        const act = btn.dataset.dpAct;
+
+        if (act === "first") p = 1;
+        else if (act === "prev") p = Math.max(1, p - 1);
+        else if (act === "next") p = Math.min(tp, p + 1);
+        else if (act === "last") p = tp;
+        else if (act === "goto") p = parseInt(btn.dataset.dpPage || "1", 10);
+
+        _dpPage[key] = p;
+
+        // Appel de la fonction de rafraîchissement correspondante
+        if (typeof window._dpRefresh[key] === "function") {
+            window._dpRefresh[key]();
+        }
+    });
 }
-window._dpRefresh = {};
+// On définit les fonctions à appeler pour chaque type de liste
+window._dpRefresh = {
+    patients: () => afficherPatients(document.getElementById("searchPatient")?.value || ""),
+    rdv: () => afficherRdvFiltre(),
+    facturesPaiement: () => filtrerFacturesPaiement(),
+    facturesToutes: () => Factures.afficherToutes()
+};
+
+// On lance l'écouteur de clics
+initDpPaginationClick();
 
 
 // ============================================
@@ -2393,86 +2421,91 @@ window.modifierPatient = function(id) {
 async function ouvrirFichePatient(id) {
     _fichePatientId = id;
     try {
-        const res = await fetch(`${API_URL}/patients/${id}`);
-        const p = await res.json();
-        // Header
+        // 1. AJOUT DU HEADER D'AUTH (Sinon ton backend te dira "Accès non autorisé")
+        const res = await fetch(`${API_URL}/patients/${id}`, { 
+            headers: _authHeaders() 
+        });
+        
+        const json = await res.json();
+        
+        // 2. COMPATIBILITÉ DES FORMATS (Gérer si c'est p ou p.data)
+        const p = json.data ? json.data : json;
+
+        // --- Remplissage du Header ---
         const initials = ((p.nom || '')[0] || '') + ((p.prenom || '')[0] || '');
         document.getElementById('ficheAvatar').textContent = initials.toUpperCase();
         document.getElementById('ficheNomPrenom').textContent = `${p.nom} ${p.prenom}`;
 
-        // Âge
+        // --- Calcul de l'Âge ---
         let age = '-';
         if (p.date_naissance) {
             const dob = new Date(p.date_naissance);
-            age = Math.floor((new Date() - dob) / (365.25 * 24 * 3600 * 1000)) + ' ans';
+            if (!isNaN(dob)) {
+                age = Math.floor((new Date() - dob) / (365.25 * 24 * 3600 * 1000)) + ' ans';
+            }
         }
 
         const meta = [`${p.sexe||''}`, `${p.type_patient||'adulte'}`, p.type_assurance !== 'Aucune' ? p.type_assurance : ''];
         document.getElementById('ficheMeta').textContent = meta.filter(Boolean).join(' · ');
 
-        // Infos
+        // --- Infos Générales ---
         const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || '—'; };
+        
         setT('ficheNomFull', `${p.nom} ${p.prenom}`);
-        setT('ficheNaissance', formatDateNaissance(p.date_naissance));
+        setT('ficheNaissance', formatDate(p.date_naissance)); // Utilise ta fonction formatDate
         setT('ficheAge', age);
-        setT('ficheSexe', p.sexe || '—');
-        setT('ficheTel', p.telephone || '—');
-        setT('ficheEmail', p.email || '—');
-        setT('ficheVille', p.pays && p.pays != 'Maroc' ? `${p.ville||'—'}, ${p.pays}` : p.ville || '—');
-        setT('ficheCin', p.cnie || '—');
-        setT('ficheAssurance', p.type_assurance && p.type_assurance !== 'Aucune' ? `${p.type_assurance}${p.numero_immatriculation ? ' — '+p.numero_immatriculation : ''}` : 'Aucune');
-        setT('ficheImmat', p.numero_immatriculation || '—');
-        setT('ficheType', p.type_patient || 'adulte');
-        setT('ficheCree', formatDateCreation(p.created_at));
-        setT('ficheAntecedents', p.antecedents_medicaux || '—');
-        setT('ficheAllergies', p.allergies || '—');
-        setT('ficheNotes', p.notes || '—');
+        setT('ficheSexe', p.sexe);
+        setT('ficheTel', p.telephone);
+        setT('ficheEmail', p.email);
+        setT('ficheVille', p.ville);
+        setT('ficheCin', p.cnie);
+        setT('ficheAssurance', p.type_assurance);
+        setT('ficheImmat', p.numero_immatriculation);
+        setT('ficheType', p.type_patient);
+        setT('ficheCree', formatDate(p.created_at));
+        setT('ficheAntecedents', p.antecedents_medicaux);
+        setT('ficheAllergies', p.allergies);
+        setT('ficheNotes', p.notes);
 
-        // Financier
+        // --- Stats Financières ---
         if (p.stats) {
             const fmt = v => (parseFloat(v) || 0).toFixed(2) + ' DH';
             setT('ficheTotal', fmt(p.stats.total_facture));
             setT('ficheRecu', fmt(p.stats.total_regle));
             setT('ficheReste', fmt(p.stats.total_restant));
         }
-        setT('ficheDernierRdv', p.dernier_rdv ? formatDateNaissance(p.dernier_rdv.date_rdv) + ' — ' + (p.dernier_rdv.motif || '-') : '—');
-        setT('ficheProchainRdv', p.prochain_rdv ? formatDateNaissance(p.prochain_rdv.date_rdv) + ' à ' + (p.prochain_rdv.heure_rdv || '—') : 'Aucun planifié');
 
-        // RDV du patient
-        const rdvRes = await fetch(`${API_URL}/rdv?patient_id=${id}`).catch(() => ({ json: () => [] }));
-        const rdvList = await rdvRes.json().catch(() => []);
+        // --- Rendez-vous ---
+        setT('ficheDernierRdv', p.dernier_rdv ? formatDate(p.dernier_rdv.date_rdv) : '—');
+        
+        const rdvRes = await fetch(`${API_URL}/rdv?patient_id=${id}`, { headers: _authHeaders() });
+        const rdvList = await rdvRes.json();
+        const finalRdvList = rdvList.data ? rdvList.data : rdvList; // Compatibilité format
+
         const ficheRdvList = document.getElementById('ficheRdvList');
-        if (ficheRdvList && Array.isArray(rdvList)) {
-            ficheRdvList.innerHTML = rdvList.length ?
-                rdvList.slice(0, 20).map(r => `<tr>
-                    <td>${formatDateNaissance(r.date_rdv)}</td>
-                    <td>${r.heure_rdv||'-'}</td>
-                    <td>${r.motif||'-'}</td>
-                    <td><span class="statut-badge ${getStatutClass(r.statut)}">${r.statut}</span></td>
-                  </tr>`).join('') :
-                '<tr><td colspan="4" style="text-align:center;color:#888;padding:14px;">Aucun rendez-vous</td></tr>';
+        if (ficheRdvList && Array.isArray(finalRdvList)) {
+            ficheRdvList.innerHTML = finalRdvList.length ?
+                finalRdvList.slice(0, 10).map(r => `
+                    <tr>
+                        <td>${formatDate(r.date_rdv)}</td>
+                        <td>${r.heure_rdv || '-'}</td>
+                        <td>${r.motif || '-'}</td>
+                        <td><span class="statut-badge ${getStatutClass(r.statut)}">${r.statut}</span></td>
+                    </tr>`).join('') :
+                '<tr><td colspan="4" style="text-align:center;padding:20px;">Aucun historique</td></tr>';
         }
 
-        // Reset tab active
-        document.querySelectorAll('.fiche-tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.fiche-tab').forEach(t => t.classList.remove('active'));
-        document.getElementById('tab-infos').classList.add('active');
-        document.querySelector('.fiche-tab').classList.add('active');
-
-        // Charger imagerie
-        chargerImagerie(id);
-
-        // Ouvrir modal
+        // --- Affichage Modal ---
         const modal = document.getElementById('patientFicheModal');
-        
-        // --- AJOUT ICI : On force l'affichage avant d'ajouter la classe d'animation ---
-        if (modal) modal.style.display = 'flex'; 
-        
-        modal.classList.add('modal-open');
+        if (modal) {
+            modal.style.display = 'flex'; 
+            modal.classList.add('modal-open');
+        }
         document.body.style.overflow = 'hidden';
+
     } catch (e) {
-        showToast('❌ Erreur chargement fiche', 'error');
-        console.error(e);
+        console.error("Erreur fiche patient:", e);
+        showToast('❌ Erreur lors du chargement de la fiche', 'error');
     }
 }
 
@@ -2788,50 +2821,157 @@ async function sauvegarderProfil() {
 let _charts = {};
 
 async function chargerGraphiques() {
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
-  if (user.role !== "dentiste") return;
-  try {
-    const headers = _authHeaders();
-    const [revRes, patRes, rdvChartRes, payTypesRes] = await Promise.all([
-      fetch(`${API_URL}/paiements/stats/chart`, { headers }).catch(() => ({ ok: false })),
-      fetch(`${API_URL}/patients/stats/chart`, { headers }).catch(() => ({ ok: false })),
-      fetch(`${API_URL}/rdv/stats/chart`, { headers }).catch(() => ({ ok: false })),
-      fetch(`${API_URL}/paiements/stats/types`, { headers }).catch(() => ({ ok: false })),
-    ]);
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    // Seul le dentiste voit les stats financières
+    if (user.role !== "dentiste") return;
 
-    if (revRes.status === 401) return logout();
+    try {
+        const headers = _authHeaders();
+        const [revRes, patRes, rdvChartRes, payTypesRes] = await Promise.all([
+            fetch(`${API_URL}/paiements/stats/chart`, { headers }).catch(() => ({ ok: false })),
+            fetch(`${API_URL}/patients/stats/chart`, { headers }).catch(() => ({ ok: false })),
+            fetch(`${API_URL}/rdv/stats/chart`, { headers }).catch(() => ({ ok: false })),
+            fetch(`${API_URL}/paiements/stats/types`, { headers }).catch(() => ({ ok: false })),
+        ]);
 
-    const revData   = revRes.ok   ? await revRes.json()   : [];
-    const patData   = patRes.ok   ? await patRes.json()   : [];
-    const rdvData   = rdvChartRes.ok ? await rdvChartRes.json() : [];
-    const typesData = payTypesRes.ok ? await payTypesRes.json() : {};
+        if (revRes.status === 401) return logout();
 
-    const labels12 = [];
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(); d.setMonth(d.getMonth() - i);
-      labels12.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        // --- Extraction des données avec gestion du format hybride ---
+        const getFinalData = async (res) => {
+            if (!res.ok) return [];
+            const json = await res.json();
+            return json.data ? json.data : json; // Supporte les deux formats
+        };
+
+        const revData = await getFinalData(revRes);
+        const patData = await getFinalData(patRes);
+        const rdvData = await getFinalData(rdvChartRes);
+        const typesData = await getFinalData(payTypesRes);
+
+        // --- Préparation des labels (12 derniers mois) ---
+        const labels12 = [];
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            labels12.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        }
+        const labelsFr = labels12.map((l) => {
+            const [y, m] = l.split("-");
+            return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+        });
+
+        const mapData = (data, labels) => {
+            if (!Array.isArray(data)) return labels.map(() => 0);
+            return labels.map((l) => {
+                const f = data.find((d) => d.mois === l);
+                return f ? parseFloat(f.total || f.count || 0) : 0;
+            });
+        };
+
+        // --- Configuration visuelle (Thème) ---
+        const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+        const gridColor = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)";
+        const textColor = isDark ? "#94a3b8" : "#475569";
+        
+        const baseOpts = { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { legend: { display: false } }, 
+            scales: { 
+                x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }, 
+                y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } } 
+            } 
+        };
+
+        // --- Initialisation des graphiques avec DESTRUCTION ---
+
+        // 1. Graphique Revenus
+        const c1 = document.getElementById("chartRevenus");
+        if (c1) {
+            if (_charts.revenus) _charts.revenus.destroy(); // <--- CRITIQUE : Supprime l'ancien
+            _charts.revenus = new Chart(c1, {
+                type: "line",
+                data: {
+                    labels: labelsFr,
+                    datasets: [{
+                        label: "Revenus DH",
+                        data: mapData(revData, labels12),
+                        borderColor: "#2563eb",
+                        backgroundColor: "rgba(37,99,235,.1)",
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: "#2563eb"
+                    }]
+                },
+                options: { ...baseOpts, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y.toFixed(0)} DH` } } } }
+            });
+        }
+
+        // 2. Graphique Patients
+        const c2 = document.getElementById("chartPatients");
+        if (c2) {
+            if (_charts.patients) _charts.patients.destroy(); // <--- CRITIQUE
+            _charts.patients = new Chart(c2, {
+                type: "bar",
+                data: {
+                    labels: labelsFr,
+                    datasets: [{
+                        label: "Patients",
+                        data: mapData(patData, labels12),
+                        backgroundColor: "rgba(16,185,129,.7)",
+                        borderRadius: 5
+                    }]
+                },
+                options: baseOpts
+            });
+        }
+
+        // 3. Graphique RDV
+        const c3 = document.getElementById("chartRdv");
+        if (c3) {
+            if (_charts.rdv) _charts.rdv.destroy(); // <--- CRITIQUE
+            _charts.rdv = new Chart(c3, {
+                type: "bar",
+                data: {
+                    labels: labelsFr,
+                    datasets: [{
+                        label: "RDV",
+                        data: mapData(rdvData, labels12),
+                        backgroundColor: "rgba(139,92,246,.7)",
+                        borderRadius: 5
+                    }]
+                },
+                options: baseOpts
+            });
+        }
+
+        // 4. Graphique Répartition Paiements
+        const c4 = document.getElementById("chartPaiements");
+        if (c4) {
+            if (_charts.paiements) _charts.paiements.destroy(); // <--- CRITIQUE
+            const types = typesData || {};
+            _charts.paiements = new Chart(c4, {
+                type: "doughnut",
+                data: {
+                    labels: ["Espèces", "Carte", "Virement", "Chèque"],
+                    datasets: [{
+                        data: [types.especes || 0, types.carte || 0, types.virement || 0, types.cheque || 0],
+                        backgroundColor: ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6"],
+                        borderWidth: 2,
+                        borderColor: isDark ? "#1e293b" : "#fff"
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: "bottom", labels: { color: textColor, font: { size: 11 } } } }
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Erreur lors du chargement des graphiques:", e);
     }
-    const labelsFr = labels12.map((l) => { const [y, m] = l.split("-"); return new Date(y, m - 1, 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" }); });
-
-    const mapData = (data, labels) => {
-      if (!Array.isArray(data)) return labels.map(() => 0);
-      return labels.map((l) => { const f = data.find((d) => d.mois === l); return f ? parseFloat(f.total || f.count || 0) : 0; });
-    };
-
-    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    const gridColor = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)";
-    const textColor = isDark ? "#94a3b8" : "#475569";
-    const baseOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } }, y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } } } } };
-
-    const c1 = document.getElementById("chartRevenus");
-    if (c1) { if (_charts.revenus) _charts.revenus.destroy(); _charts.revenus = new Chart(c1, { type: "line", data: { labels: labelsFr, datasets: [{ label: "Revenus DH", data: mapData(revData, labels12), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: "#2563eb" }] }, options: { ...baseOpts, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y.toFixed(0)} DH` } } } } }); }
-    const c2 = document.getElementById("chartPatients");
-    if (c2) { if (_charts.patients) _charts.patients.destroy(); _charts.patients = new Chart(c2, { type: "bar", data: { labels: labelsFr, datasets: [{ label: "Patients", data: mapData(patData, labels12), backgroundColor: "rgba(16,185,129,.7)", borderRadius: 5 }] }, options: baseOpts }); }
-    const c3 = document.getElementById("chartRdv");
-    if (c3) { if (_charts.rdv) _charts.rdv.destroy(); _charts.rdv = new Chart(c3, { type: "bar", data: { labels: labelsFr, datasets: [{ label: "RDV", data: mapData(rdvData, labels12), backgroundColor: "rgba(139,92,246,.7)", borderRadius: 5 }] }, options: baseOpts }); }
-    const c4 = document.getElementById("chartPaiements");
-    if (c4) { if (_charts.paiements) _charts.paiements.destroy(); const types = typesData || {}; _charts.paiements = new Chart(c4, { type: "doughnut", data: { labels: ["Espèces", "Carte", "Virement", "Chèque"], datasets: [{ data: [types.especes || 0, types.carte || 0, types.virement || 0, types.cheque || 0], backgroundColor: ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6"], borderWidth: 2, borderColor: isDark ? "#1e293b" : "#fff" }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { color: textColor, font: { size: 11 } } } } } }); }
-  } catch (e) { console.error("Erreur lors du chargement des graphiques:", e); }
 }
 
 
