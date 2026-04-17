@@ -93,7 +93,16 @@ function dpPaginationRender(wrapId, key, page, totalPages, total) {
     </div>`;
 }
 
+function fermerModal(id) {
+    const m = document.getElementById(id);
+    if (m) {
+        m.classList.remove('open');
+        m.style.display = 'none';
+    }
+}
+
 // 3. Gère les clics sur les boutons (Une seule fois au chargement)
+
 function initDpPaginationClick() {
     if (document.body.dataset.dpPaginationInit) return;
     document.body.dataset.dpPaginationInit = "1";
@@ -127,10 +136,14 @@ function initDpPaginationClick() {
 }
 // On définit les fonctions à appeler pour chaque type de liste
 window._dpRefresh = {
-    patients: () => afficherPatients(document.getElementById("searchPatient")?.value || ""),
-    rdv: () => afficherRdvFiltre(),
+    patients:         () => afficherPatients(document.getElementById('searchPatient')?.value || ''),
+    rdv:              () => afficherRdvFiltre(),
     facturesPaiement: () => filtrerFacturesPaiement(),
-    facturesToutes: () => Factures.afficherToutes()
+    facturesToutes:   () => afficherToutesFactures(_lastToutesFacturesList),
+    risques:          () => { if (typeof chargerPatientsRisque === 'function') chargerPatientsRisque(); },
+    ordonnances:      () => { if (typeof chargerOrdonnancesListe === 'function') chargerOrdonnancesListe(); },
+    stock:            () => { if (typeof chargerStock === 'function') chargerStock(); },
+    historique:       () => afficherHistorique(_lastHistoriqueFiltered),
 };
 
 // On lance l'écouteur de clics
@@ -571,34 +584,6 @@ function updateDashboardCounts(allRdv) {
     }).length);
 }
 
-const rdvForm = document.getElementById("rdvForm");
-if (rdvForm) {
-    rdvForm.addEventListener("submit", async function(e) {
-        e.preventDefault();
-        const rdv = {
-            id_patient: document.getElementById("rdvPatient").value,
-            date_rdv: document.getElementById("dateRdv").value,
-            heure_rdv: document.getElementById("heureRdv").value,
-            motif: document.getElementById("motifRdv").value,
-            dent: document.getElementById("dentRdv").value,
-            statut: document.getElementById("statutRdv").value,
-            id_user: localStorage.getItem("userId") || 1
-        };
-        try {
-            const url = editRdvId ? `${API_URL}/rdv/${editRdvId}` : `${API_URL}/rdv`;
-            const method = editRdvId ? "PUT" : "POST";
-            const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(rdv) });
-            const data = await res.json();
-            if (data.success || res.ok) {
-                showToast(editRdvId ? "✅ RDV modifié!" : "✅ RDV ajouté!", "success");
-                resetRdvForm();
-                chargerRdv();
-            } else {
-                showToast("❌ Erreur: " + (data.error || ""), "error");
-            }
-        } catch (e) { showToast("❌ Erreur lors de l'opération", "error"); }
-    });
-}
 
 function filtrerRdv() {
     _dpPage.rdv = 1;
@@ -1354,62 +1339,7 @@ async function downloadFacturePDF(id_facture) {
     } catch (e) { showToast('❌ Erreur génération PDF', 'error'); }
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-  loadTheme();
-  initUserUI();
-  initDpPaginationClick();
-
-  const path = window.location.pathname;
-  const isDash = path.includes("dashboard.html") || path.endsWith("/") || path.includes("index");
-  if (!isDash) return;
-
-  startDateTimeUpdater();
-  checkAuth();
-
-  // Attacher les listeners formulaires UNE SEULE FOIS
-  _attachRdvFormListener();
-
-  try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const el = document.getElementById("dashUserName");
-    if (el && user.prenom) el.textContent = "Bienvenue, " + user.prenom + " " + (user.nom || "");
-  } catch (e) {}
-
-  Promise.all([
-    chargerPatients(),
-    chargerRdv(),
-    chargerSalleAttente(),
-    chargerStatsPaiements(),
-    chargerFactures(),
-    chargerToutesFactures(),
-  ]).then(() => {
-    rechargerDashboard();
-    chargerGraphiques();
-    startLiveRefresh();
-  });
-
-  // Badge chat
-  setTimeout(() => {
-    const userId = localStorage.getItem("userId");
-    if (userId) {
-      fetch(`${API_URL}/chat/unread/${userId}`, { headers: _authHeaders() })
-        .then((r) => r.json())
-        .then((d) => { const badge = document.getElementById("chatBadge"); if (badge && d.count > 0) { badge.textContent = d.count; badge.style.display = "inline"; } })
-        .catch(() => {});
-    }
-  }, 2000);
-
-  // Refresh dashboard toutes les 30s
-  setInterval(() => { const active = document.querySelector(".section.active"); if (!active || active.id === "dashboard") rechargerDashboard(); }, 30000);
-
-  // Refresh badge chat toutes les 15s
-  setInterval(() => {
-    if (!_chatOpen) {
-      const uid = localStorage.getItem("userId");
-      if (uid) fetch(`${API_URL}/chat/unread/${uid}`, { headers: _authHeaders() }).then((r) => r.json()).then((d) => { const badge = document.getElementById("chatBadge"); if (badge) { if (d.count > 0) { badge.textContent = d.count; badge.style.display = "inline"; } else badge.style.display = "none"; } }).catch(() => {});
-    }
-  }, 15000);
-});
+// NOTE: DOMContentLoaded unique — voir bloc principal plus bas
 
 function _attachRdvFormListener() {
   const rdvForm = document.getElementById("rdvForm");
@@ -1636,8 +1566,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const isDash = path.includes('dashboard.html') || path.endsWith('/') || path.includes('index');
     if (!isDash) return;
 
+    initDpPaginationClick();
     startDateTimeUpdater();
     checkAuth();
+
+    // Attacher les listeners formulaires UNE SEULE FOIS
+    _attachRdvFormListener();
 
     try {
         const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -1654,7 +1588,6 @@ document.addEventListener('DOMContentLoaded', function() {
         chargerToutesFactures()
     ]).then(() => {
         rechargerDashboard();
-        chargerGraphiques();
         startLiveRefresh();
     });
 
@@ -1700,23 +1633,59 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 
-const _dentalColors = {
-    saine: { fill: '#fff', stroke: '#ccc' },
-    carie: { fill: '#fde68a', stroke: '#d97706' },
-    bridge: { fill: '#a7f3d0', stroke: '#059669' },
-    implant: { fill: '#e5e7eb', stroke: '#9ca3af' },
-    couronne: { fill: '#ddd6fe', stroke: '#7c3aed' },
-    extraction: { fill: '#fecaca', stroke: '#dc2626' },
-    traitement_canal: { fill: '#fed7aa', stroke: '#ea580c' },
-    absente: { fill: '#e5e7eb', stroke: '#9ca3af' },
+// ── Palette ISO des états dentaires ──
+const DENTAL_COLORS = {
+    saine:            { fill: 'url(#toothNormal)',   stroke: '#D4B896', rootFill: '#F5ECD7' },
+    carie:            { fill: 'url(#toothCarie)',    stroke: '#D97706', rootFill: '#FDE68A' },
+    bridge:           { fill: 'url(#toothBridge)',   stroke: '#059669', rootFill: '#A7F3D0' },
+    implant:          { fill: '#E5E7EB',             stroke: '#9CA3AF', rootFill: '#E5E7EB' },
+    couronne:         { fill: 'url(#toothCouronne)', stroke: '#7C3AED', rootFill: '#DDD6FE' },
+    extraction:       { fill: 'url(#toothExtract)',  stroke: '#DC2626', rootFill: '#FECACA' },
+    traitement_canal: { fill: 'url(#toothCanal)',    stroke: '#EA580C', rootFill: '#FED7AA' },
+    absente:          { fill: 'rgba(203,213,225,0.3)', stroke: '#CBD5E1', rootFill: 'rgba(203,213,225,0.2)' },
+    selected:         { fill: 'url(#toothSelected)', stroke: '#2563EB', rootFill: '#93C5FD' },
 };
 
-const _dentalW = [18, 18, 18, 20, 22, 26, 28, 30];
-const _dentalH = [22, 22, 22, 22, 22, 24, 24, 24];
+// ── Adulte : 8 dents × 4 quadrants = 32 dents ──
+// Format : [numéro, crownW, crownH, rootW, rootH, type]
+const _ADULT_TEETH = {
+    upper: [
+        [18,21,20,14,32,'wisdom'],  [17,23,22,17,36,'molar'],   [16,24,22,18,38,'molar'],
+        [15,19,22,13,46,'premolar'],[14,19,22,13,48,'premolar'],[13,17,32,7,60,'canine'],
+        [12,18,26,8,55,'lateral'],  [11,21,30,9,55,'central'],
+        [21,21,30,9,55,'central'],  [22,18,26,8,55,'lateral'],  [23,17,32,7,60,'canine'],
+        [24,19,22,13,48,'premolar'],[25,19,22,13,46,'premolar'],[26,24,22,18,38,'molar'],
+        [27,23,22,17,36,'molar'],   [28,21,20,14,32,'wisdom']
+    ],
+    lower: [
+        [48,21,20,14,32,'wisdom'],  [47,23,22,17,36,'molar'],   [46,24,22,18,38,'molar'],
+        [45,19,22,13,46,'premolar'],[44,19,22,13,48,'premolar'],[43,17,32,7,60,'canine'],
+        [42,18,26,8,55,'lateral'],  [41,21,30,9,55,'central'],
+        [31,21,30,9,55,'central'],  [32,18,26,8,55,'lateral'],  [33,17,32,7,60,'canine'],
+        [34,19,22,13,48,'premolar'],[35,19,22,13,46,'premolar'],[36,24,22,18,38,'molar'],
+        [37,23,22,17,36,'molar'],   [38,21,20,14,32,'wisdom']
+    ]
+};
 
-function _dentalLabel(q, i) { return ({ 1: 10, 2: 20, 3: 30, 4: 40 }[q]) + (i + 1); }
+// ── Enfant : 5 dents × 4 quadrants = 20 dents ──
+const _CHILD_TEETH = {
+    upper: [
+        [55,19,22,14,34,'deciduous'],[54,20,22,15,36,'deciduous'],[53,16,28,7,52,'deciduous'],
+        [52,15,22,7,48,'deciduous'], [51,18,26,8,48,'deciduous'],
+        [61,18,26,8,48,'deciduous'], [62,15,22,7,48,'deciduous'], [63,16,28,7,52,'deciduous'],
+        [64,20,22,15,36,'deciduous'],[65,19,22,14,34,'deciduous']
+    ],
+    lower: [
+        [85,19,22,14,34,'deciduous'],[84,20,22,15,36,'deciduous'],[83,16,28,7,52,'deciduous'],
+        [82,15,22,7,48,'deciduous'], [81,18,26,8,48,'deciduous'],
+        [71,18,26,8,48,'deciduous'], [72,15,22,7,48,'deciduous'], [73,16,28,7,52,'deciduous'],
+        [74,20,22,15,36,'deciduous'],[75,19,22,14,34,'deciduous']
+    ]
+};
 
-/* OLD DENTAL BLOCK 1 - superseded by advanced engine */
+const _D_GAP  = 3;   // espace entre dents (px)
+const _D_CGAP = 6;   // espace au centre (séparateur)
+const _D_SVG_W = 900;
 
 function _dentalToggle(label) {
     _dentalSelected.has(label) ? _dentalSelected.delete(label) : _dentalSelected.add(label);
@@ -2452,7 +2421,7 @@ async function ouvrirFichePatient(id) {
         const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || '—'; };
         
         setT('ficheNomFull', `${p.nom} ${p.prenom}`);
-        setT('ficheNaissance', formatDate(p.date_naissance)); // Utilise ta fonction formatDate
+        setT('ficheNaissance', formatDateNaissance(p.date_naissance)); // Utilise ta fonction formatDate
         setT('ficheAge', age);
         setT('ficheSexe', p.sexe);
         setT('ficheTel', p.telephone);
@@ -2462,7 +2431,7 @@ async function ouvrirFichePatient(id) {
         setT('ficheAssurance', p.type_assurance);
         setT('ficheImmat', p.numero_immatriculation);
         setT('ficheType', p.type_patient);
-        setT('ficheCree', formatDate(p.created_at));
+        setT('ficheCree', formatDateNaissance(p.created_at));
         setT('ficheAntecedents', p.antecedents_medicaux);
         setT('ficheAllergies', p.allergies);
         setT('ficheNotes', p.notes);
@@ -2476,7 +2445,7 @@ async function ouvrirFichePatient(id) {
         }
 
         // --- Rendez-vous ---
-        setT('ficheDernierRdv', p.dernier_rdv ? formatDate(p.dernier_rdv.date_rdv) : '—');
+        setT('ficheDernierRdv', p.dernier_rdv ? formatDateNaissance(p.dernier_rdv.date_rdv) : '—');
         
         const rdvRes = await fetch(`${API_URL}/rdv?patient_id=${id}`, { headers: _authHeaders() });
         const rdvList = await rdvRes.json();
@@ -2487,7 +2456,7 @@ async function ouvrirFichePatient(id) {
             ficheRdvList.innerHTML = finalRdvList.length ?
                 finalRdvList.slice(0, 10).map(r => `
                     <tr>
-                        <td>${formatDate(r.date_rdv)}</td>
+                        <td>${formatDateNaissance(r.date_rdv)}</td>
                         <td>${r.heure_rdv || '-'}</td>
                         <td>${r.motif || '-'}</td>
                         <td><span class="statut-badge ${getStatutClass(r.statut)}">${r.statut}</span></td>
@@ -2530,9 +2499,13 @@ function ficheNouveauRdv() {
     setTimeout(() => {
         const sel = document.getElementById('rdvPatient');
         if (sel) sel.value = _fichePatientId;
-        document.querySelector('#rdv .form-container') ?.scrollIntoView({ behavior: 'smooth' });
+        document.querySelector('#rdv .form-container')?.scrollIntoView({ behavior: 'smooth' });
     }, 200);
 }
+
+// Alias pour boutons actions rapides de la fiche patient
+function ficheActionRdv()   { ficheNouveauRdv(); }
+function ficheActionPayer() { fichePayer(); }
 
 function ficheAjouterAttente() {
     fermerFichePatient();
@@ -2582,7 +2555,7 @@ async function chargerImagerie(patientId) {
     if (!grid) return;
     grid.innerHTML = '<div class="imagerie-empty">Chargement…</div>';
     try {
-        const res = await fetch(`${API_URL}/patients/${patientId}/imagerie`);
+        const res = await fetch(`${API_URL}/patients/${patientId}/imagerie`, { headers: _authHeaders() });
         const items = await res.json();
         if (!items.length) { grid.innerHTML = '<div class="imagerie-empty">Aucun document importé pour ce patient</div>'; return; }
         grid.innerHTML = items.map(img => {
@@ -2619,7 +2592,11 @@ async function uploadImagerie() {
     fd.append('id_user', localStorage.getItem('userId') || 1);
     try {
         showToast('📤 Upload en cours…', 'info');
-        const res = await fetch(`${API_URL}/patients/${_fichePatientId}/imagerie`, { method: 'POST', body: fd });
+        const res = await fetch(`${API_URL}/patients/${_fichePatientId}/imagerie`, { 
+            method: 'POST', 
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+            body: fd 
+        });
         const data = await res.json();
         if (data.success) {
             showToast('✅ Document importé!', 'success');
@@ -2632,7 +2609,7 @@ async function uploadImagerie() {
 async function supprimerImagerie(imgId) {
     if (!confirm('Supprimer ce document?')) return;
     try {
-        const res = await fetch(`${API_URL}/patients/imagerie/${imgId}`, { method: 'DELETE' });
+        const res = await fetch(`${API_URL}/patients/imagerie/${imgId}`, { method: 'DELETE', headers: _authHeaders() });
         const d = await res.json();
         if (d.success) {
             showToast('✅ Supprimé!', 'success');
@@ -3101,8 +3078,286 @@ function startLiveRefresh() {
 
 
 // ============================================
-// SCHÉMA DENTAIRE — MOTEUR RÉALISTE AVANCÉ
+// SCHÉMA DENTAIRE — MOTEUR ISO FDI PROFESSIONNEL
 // ============================================
+
+// Calcul automatique des positions X (centrage dans le SVG)
+function _computeDentalXPositions(teeth) {
+    const mid    = Math.floor(teeth.length / 2);
+    const half1  = teeth.slice(0, mid);
+    const half2  = teeth.slice(mid);
+    const w1     = half1.reduce((s, t) => s + t[1], 0) + Math.max(0, half1.length - 1) * _D_GAP;
+    const w2     = half2.reduce((s, t) => s + t[1], 0) + Math.max(0, half2.length - 1) * _D_GAP;
+    const total  = w1 + _D_CGAP + w2;
+    const startX = Math.round((_D_SVG_W - total) / 2);
+    const positions = [];
+    let x = startX;
+    half1.forEach(t => { positions.push(x); x += t[1] + _D_GAP; });
+    x += _D_CGAP - _D_GAP;
+    half2.forEach(t => { positions.push(x); x += t[1] + _D_GAP; });
+    return { positions, centerX: Math.round(startX + w1 + _D_CGAP / 2) };
+}
+
+// Dessine une racine (chemin SVG effilé)
+function _drawDentalRoot(g, NS, rx, ry, rw, rh, isUpper, col) {
+    const r   = document.createElementNS(NS, 'path');
+    const mid = rx + rw / 2;
+    if (isUpper) {
+        // Racine allant vers le haut (pointe au sommet)
+        r.setAttribute('d', `M${rx},${ry} L${rx + rw * 0.12},${ry - rh + 9} Q${mid},${ry - rh} ${rx + rw * 0.88},${ry - rh + 9} L${rx + rw},${ry} Z`);
+    } else {
+        // Racine allant vers le bas (pointe en bas)
+        r.setAttribute('d', `M${rx},${ry} L${rx + rw},${ry} L${rx + rw * 0.88},${ry + rh - 9} Q${mid},${ry + rh} ${rx + rw * 0.12},${ry + rh - 9} Z`);
+    }
+    r.setAttribute('fill', col.rootFill);
+    r.setAttribute('stroke', col.stroke);
+    r.setAttribute('stroke-width', '0.8');
+    r.setAttribute('opacity', '0.78');
+    r.setAttribute('pointer-events', 'none');
+    g.appendChild(r);
+}
+
+// Dessine les croix d'extraction sur une dent
+function _drawDentalExtractionX(g, NS, x, y, w, h) {
+    [[x + 3, y + 3, x + w - 3, y + h - 3], [x + w - 3, y + 3, x + 3, y + h - 3]].forEach(([x1, y1, x2, y2]) => {
+        const l = document.createElementNS(NS, 'line');
+        l.setAttribute('class', 'extraction-mark');
+        l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+        l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+        l.setAttribute('stroke', '#DC2626'); l.setAttribute('stroke-width', '1.8');
+        l.setAttribute('pointer-events', 'none');
+        g.appendChild(l);
+    });
+}
+
+// Dessine une rangée complète de dents
+function _drawDentalRow(container, NS, teethArr, xPos, isUpper) {
+    const CU = 143; // bas des couronnes supérieures
+    const CL = 178; // haut des couronnes inférieures
+
+    teethArr.forEach(([num, cW, cH, rW, rH, type], i) => {
+        const x       = xPos[i];
+        const sel     = _dentalSelected.has(num);
+        const etat    = (_dentalConditions && _dentalConditions[num]) || 'saine';
+        const col     = sel ? DENTAL_COLORS.selected : (DENTAL_COLORS[etat] || DENTAL_COLORS.saine);
+        const isMolar = (type === 'molar' || type === 'wisdom' || (type === 'deciduous' && cW >= 19));
+
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'dental-tooth');
+        g.dataset.tooth = num;
+        g.style.cursor = 'pointer';
+
+        if (isUpper) {
+            const crownBot = CU;
+            const crownTop = CU - cH;
+            const rootX    = x + (cW - rW) / 2;
+
+            // Racines (vers le haut)
+            if (isMolar) {
+                const hw = Math.round((rW - 2) / 2);
+                _drawDentalRoot(g, NS, rootX,          crownTop, hw, Math.round(rH * 0.85), true, col);
+                _drawDentalRoot(g, NS, rootX + hw + 2, crownTop, hw, rH,                   true, col);
+            } else {
+                _drawDentalRoot(g, NS, rootX, crownTop, rW, rH, true, col);
+            }
+
+            // Couronne
+            const crown = document.createElementNS(NS, 'rect');
+            crown.id = 'dr-' + num;
+            crown.setAttribute('x', x);        crown.setAttribute('y', crownTop);
+            crown.setAttribute('width', cW);   crown.setAttribute('height', cH);
+            crown.setAttribute('rx', type === 'canine' ? 5 : 3);
+            crown.setAttribute('fill', col.fill); crown.setAttribute('stroke', col.stroke);
+            crown.setAttribute('stroke-width', '1.5');
+            crown.style.transition = 'all .15s ease';
+            g.appendChild(crown);
+
+            // Marques d'extraction
+            if (etat === 'extraction' && !sel) _drawDentalExtractionX(g, NS, x, crownTop, cW, cH);
+
+            // Numéro (sous la couronne)
+            const txt = document.createElementNS(NS, 'text');
+            txt.id = 'dt-' + num;
+            txt.setAttribute('x', x + cW / 2);   txt.setAttribute('y', crownBot + 12);
+            txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('font-size', '8.5');
+            txt.setAttribute('font-weight', sel ? '800' : '600');
+            txt.setAttribute('fill', sel ? '#1D4ED8' : '#64748B');
+            txt.setAttribute('pointer-events', 'none');
+            txt.setAttribute('font-family', 'system-ui,sans-serif');
+            txt.textContent = num;
+            g.appendChild(txt);
+
+        } else {
+            // Mâchoire inférieure
+            const crownTop = CL;
+            const crownBot = CL + cH;
+            const rootX    = x + (cW - rW) / 2;
+
+            // Racines (vers le bas)
+            if (isMolar) {
+                const hw = Math.round((rW - 2) / 2);
+                _drawDentalRoot(g, NS, rootX,          crownBot, hw, Math.round(rH * 0.85), false, col);
+                _drawDentalRoot(g, NS, rootX + hw + 2, crownBot, hw, rH,                    false, col);
+            } else {
+                _drawDentalRoot(g, NS, rootX, crownBot, rW, rH, false, col);
+            }
+
+            // Couronne
+            const crown = document.createElementNS(NS, 'rect');
+            crown.id = 'dr-' + num;
+            crown.setAttribute('x', x);       crown.setAttribute('y', crownTop);
+            crown.setAttribute('width', cW);  crown.setAttribute('height', cH);
+            crown.setAttribute('rx', type === 'canine' ? 5 : 3);
+            crown.setAttribute('fill', col.fill); crown.setAttribute('stroke', col.stroke);
+            crown.setAttribute('stroke-width', '1.5');
+            crown.style.transition = 'all .15s ease';
+            g.appendChild(crown);
+
+            // Marques d'extraction
+            if (etat === 'extraction' && !sel) _drawDentalExtractionX(g, NS, x, crownTop, cW, cH);
+
+            // Numéro (au-dessus de la couronne)
+            const txt = document.createElementNS(NS, 'text');
+            txt.id = 'dt-' + num;
+            txt.setAttribute('x', x + cW / 2);   txt.setAttribute('y', crownTop - 4);
+            txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('font-size', '8.5');
+            txt.setAttribute('font-weight', sel ? '800' : '600');
+            txt.setAttribute('fill', sel ? '#1D4ED8' : '#64748B');
+            txt.setAttribute('pointer-events', 'none');
+            txt.setAttribute('font-family', 'system-ui,sans-serif');
+            txt.textContent = num;
+            g.appendChild(txt);
+        }
+
+        // Événements
+        g.addEventListener('click', () => _dentalToggle(num));
+        g.addEventListener('mouseenter', () => {
+            const c = document.getElementById('dr-' + num);
+            if (c && !_dentalSelected.has(num)) { c.style.opacity = '0.72'; c.style.filter = 'brightness(0.93)'; }
+        });
+        g.addEventListener('mouseleave', () => {
+            const c = document.getElementById('dr-' + num);
+            if (c) { c.style.opacity = '1'; c.style.filter = ''; }
+        });
+        container.appendChild(g);
+    });
+}
+
+// Dessine le fond SVG (séparateurs + labels de quadrants)
+function _buildDentalBackground(container, NS, centerX) {
+    const isDark   = document.documentElement.getAttribute('data-theme') === 'dark';
+    const lblColor = isDark ? '#6E90CC' : '#94A3B8';
+    const sepColor = isDark ? '#243660' : '#D1D9E8';
+    const add = el => container.appendChild(el);
+
+    // Ligne horizontale (séparation mâchoire / mandibule)
+    const hLine = document.createElementNS(NS, 'line');
+    hLine.setAttribute('x1', '220'); hLine.setAttribute('y1', '161');
+    hLine.setAttribute('x2', '680'); hLine.setAttribute('y2', '161');
+    hLine.setAttribute('stroke', sepColor);
+    hLine.setAttribute('stroke-width', '1.5');
+    hLine.setAttribute('stroke-dasharray', '5,3');
+    add(hLine);
+
+    // Ligne verticale (centre gauche / droite)
+    const vLine = document.createElementNS(NS, 'line');
+    vLine.setAttribute('x1', centerX); vLine.setAttribute('y1', '32');
+    vLine.setAttribute('x2', centerX); vLine.setAttribute('y2', '293');
+    vLine.setAttribute('stroke', sepColor);
+    vLine.setAttribute('stroke-width', '1');
+    vLine.setAttribute('stroke-dasharray', '3,3');
+    add(vLine);
+
+    // Labels de texte
+    [
+        ['mâchoire supérieure', centerX, 16,  'middle', 11,   '700', true ],
+        ['mandibule',           centerX, 313, 'middle', 11,   '700', true ],
+        ['supérieur à droite',  centerX -  9, 29,  'end',   9.5, '600', true ],
+        ['supérieur à gauche',  centerX +  9, 29,  'start', 9.5, '600', true ],
+        ['inférieur à droite',  centerX -  9, 295, 'end',   9.5, '600', true ],
+        ['inférieur à gauche',  centerX +  9, 295, 'start', 9.5, '600', true ],
+    ].forEach(([content, tx, ty, anchor, size, weight, italic]) => {
+        const t = document.createElementNS(NS, 'text');
+        t.setAttribute('x', tx);          t.setAttribute('y', ty);
+        t.setAttribute('text-anchor', anchor);
+        t.setAttribute('font-size', size); t.setAttribute('font-weight', weight);
+        t.setAttribute('fill', lblColor);
+        t.setAttribute('font-family', 'system-ui,sans-serif');
+        if (italic) t.setAttribute('font-style', 'italic');
+        t.textContent = content;
+        add(t);
+    });
+}
+
+// Mise à jour visuelle d'une dent (couleur + texte + marques extraction)
+function _dentalUpdateTooth(num) {
+    const crown = document.getElementById('dr-' + num);
+    const txt   = document.getElementById('dt-' + num);
+    if (!crown) return;
+    const sel  = _dentalSelected.has(num);
+    const etat = (_dentalConditions && _dentalConditions[num]) || 'saine';
+    const col  = sel ? DENTAL_COLORS.selected : (DENTAL_COLORS[etat] || DENTAL_COLORS.saine);
+    crown.setAttribute('fill',   col.fill);
+    crown.setAttribute('stroke', col.stroke);
+    if (txt) {
+        txt.setAttribute('fill', sel ? '#1D4ED8' : '#64748B');
+        txt.setAttribute('font-weight', sel ? '800' : '600');
+    }
+    // Marques extraction : retirer et recréer si besoin
+    const g = crown.closest('.dental-tooth');
+    if (g) {
+        g.querySelectorAll('.extraction-mark').forEach(el => el.remove());
+        if (etat === 'extraction' && !sel) {
+            const NS2 = 'http://www.w3.org/2000/svg';
+            _drawDentalExtractionX(g, NS2,
+                parseFloat(crown.getAttribute('x')),
+                parseFloat(crown.getAttribute('y')),
+                parseFloat(crown.getAttribute('width')),
+                parseFloat(crown.getAttribute('height'))
+            );
+        }
+    }
+}
+
+let _dentalIsBuilding = false;
+
+// Point d'entrée principal — construit tout le schéma dentaire
+function _dentalBuildChart() {
+    if (_dentalIsBuilding || _dentalBuilt) return;
+    _dentalIsBuilding = true;
+    try {
+        const NS    = 'http://www.w3.org/2000/svg';
+        const upper = document.getElementById('dental-upper');
+        const lower = document.getElementById('dental-lower');
+        if (!upper || !lower) return;
+
+        const teeth = _dentalMode === 'enfant' ? _CHILD_TEETH : _ADULT_TEETH;
+        const { positions: upPos, centerX } = _computeDentalXPositions(teeth.upper);
+        const { positions: loPos }           = _computeDentalXPositions(teeth.lower);
+
+        _buildDentalBackground(upper, NS, centerX);
+        _drawDentalRow(upper, NS, teeth.upper, upPos, true);
+        _drawDentalRow(lower, NS, teeth.lower, loPos, false);
+        _dentalBuilt = true;
+    } finally {
+        _dentalIsBuilding = false;
+    }
+}
+
+// Bascule entre schéma adulte et enfant
+function switchDentalType(type) {
+    _dentalMode = type;
+    document.getElementById('btnAdulte')?.classList.toggle('active', type === 'adulte');
+    document.getElementById('btnEnfant')?.classList.toggle('active', type === 'enfant');
+    _dentalBuilt = false;
+    _dentalSelected.clear();
+    const up = document.getElementById('dental-upper');
+    const lo = document.getElementById('dental-lower');
+    if (up) up.innerHTML = '';
+    if (lo) lo.innerHTML = '';
+    _dentalBuildChart();
+    _dentalRefreshPanel();
+}
 
 let _currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
 
@@ -3246,99 +3501,6 @@ function _dentalBuildQuadrant(q, container, cx, midY, goLeft) {
     }
 }
 
-function _dentalUpdateTooth(label) {
-  const body = document.getElementById("dr-" + label);
-  const txt  = document.getElementById("dt-" + label);
-  if (!body) return;
-  const sel   = _dentalSelected.has(label);
-  const etat  = (_dentalConditions && _dentalConditions[label]) || "saine";
-  const style = sel ? TOOTH_GRADIENT.selected : (TOOTH_GRADIENT[etat] || TOOTH_GRADIENT.saine);
-  body.setAttribute("fill",   style.fill);
-  body.setAttribute("stroke", style.stroke);
-  if (style.filter !== "none") body.setAttribute("filter", style.filter);
-  else body.removeAttribute("filter");
-  if (txt) txt.setAttribute("fill", sel ? "#1D4ED8" : "#64748B");
-}
-let _dentalIsBuilding = false;
-
-function _dentalBuildChart() {
-  if (_dentalIsBuilding) return; // ← Fix récursion
-  if (_dentalBuilt) return;
-  _dentalIsBuilding = true;
-  try {
-    const upper = document.getElementById("dental-upper");
-    const lower = document.getElementById("dental-lower");
-    if (!upper || !lower) return;
-    if (_dentalMode === "enfant") {
-      _dentalBuildEnfant();
-    } else {
-      _dentalBuildQuadrant(1, upper, 383, 88, false);
-      _dentalBuildQuadrant(2, upper, 377, 88, true);
-      _dentalBuildQuadrant(4, lower, 383, 230, false);
-      _dentalBuildQuadrant(3, lower, 377, 230, true);
-    }
-    _dentalBuilt = true;
-
-    // ← Attacher les listeners APRÈS construction (DOM ready)
-    document.querySelectorAll(".dental-tooth").forEach((g) => {
-      const label = parseInt(g.dataset.tooth, 10);
-      if (!label) return;
-      g.removeEventListener("click", g._dentalClickHandler); // éviter doublons
-      g._dentalClickHandler = () => _dentalToggle(label);
-      g.addEventListener("click", g._dentalClickHandler);
-    });
-  } finally {
-    _dentalIsBuilding = false;
-  }
-}
-
-function _dentalBuildEnfant() {
-    const NS = 'http://www.w3.org/2000/svg';
-    const upper = document.getElementById('dental-upper');
-    const lower = document.getElementById('dental-lower');
-    const baseMap = {5:50,6:60,7:70,8:80};
-    const enfantSizes = [[16,24],[14,22],[15,26],[18,22],[18,21]];
-    [[5,upper,383,88,false],[6,upper,377,88,true],[8,lower,383,230,false],[7,lower,377,230,true]].forEach(([q,cont,cx,midY,goLeft])=>{
-        const base = baseMap[q]; const isUp=(q<=6);
-        let x=cx;
-        [0,1,2,3,4].forEach((i)=>{
-            const [w,h]=enfantSizes[i]; const label=base+(i+1);
-            const tx=goLeft?x-w:x; const ty=isUp?midY-h:midY;
-            const etat=(_dentalConditions&&_dentalConditions[label])||'saine';
-            const sel=_dentalSelected.has(label);
-            const style=sel?TOOTH_GRADIENT.selected:(TOOTH_GRADIENT[etat]||TOOTH_GRADIENT.saine);
-            const g=document.createElementNS(NS,'g'); g.setAttribute('class','dental-tooth'); g.dataset.tooth=label; g.style.cursor='pointer';
-            g.addEventListener('click',()=>_dentalToggle(label));
-            const rect=document.createElementNS(NS,'rect');
-            rect.id='dr-'+label; rect.setAttribute('x',tx); rect.setAttribute('y',ty); rect.setAttribute('width',w); rect.setAttribute('height',h*0.65); rect.setAttribute('rx',4); rect.setAttribute('fill',style.fill); rect.setAttribute('stroke',style.stroke); rect.setAttribute('stroke-width','1.5'); if(style.filter!=='none') rect.setAttribute('filter',style.filter);
-            const tY=isUp?ty+h*0.65+10:ty-4;
-            const txt=document.createElementNS(NS,'text'); txt.id='dt-'+label; txt.setAttribute('x',tx+w/2); txt.setAttribute('y',tY); txt.setAttribute('text-anchor','middle'); txt.setAttribute('font-size','8'); txt.setAttribute('font-weight','700'); txt.setAttribute('fill',sel?'#1D4ED8':'#64748B'); txt.setAttribute('pointer-events','none'); txt.textContent=label;
-            g.appendChild(rect); g.appendChild(txt); cont.appendChild(g);
-            x=goLeft?x-(w+4):x+(w+4);
-        });
-    });
-}
-
-// Override buildChart avec context de mode
-// FIXED - Prevent recursive call
-window._dentalBuildChart = function() {
-    
-    if (typeof _dentalBuildChart === 'function' && !this._isBuilding) {
-        this._isBuilding = true;
-        _dentalBuildChart();
-        this._isBuilding = false;
-    }
-};
-
-function switchDentalType(type) {
-    _dentalMode = type;
-    document.getElementById('btnAdulte')?.classList.toggle('active', type==='adulte');
-    document.getElementById('btnEnfant')?.classList.toggle('active', type==='enfant');
-    _dentalBuilt = false; _dentalSelected.clear();
-    const up=document.getElementById('dental-upper'); const lo=document.getElementById('dental-lower');
-    if(up) up.innerHTML=''; if(lo) lo.innerHTML='';
-    _dentalBuildChart(); _dentalRefreshPanel();
-}
 
 // ============================================
 // AGENDA CALENDRIER — Vue semaine
@@ -3634,7 +3796,11 @@ window.uploadImagerie = async function() {
     fd.append('id_user',      localStorage.getItem('userId') || 1);
     try {
         showToast(`📤 Importation de "${file.name}"…`, 'info');
-        const res  = await fetch(`${API_URL}/patients/${_fichePatientId}/imagerie`, { method:'POST', body:fd });
+        const res  = await fetch(`${API_URL}/patients/${_fichePatientId}/imagerie`, { 
+            method: 'POST', 
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+            body: fd 
+        });
         if (!res.ok) {
             const txt = await res.text();
             throw new Error(txt || `HTTP ${res.status}`);
@@ -3908,6 +4074,10 @@ async function rechargerDashboard() {
     const totalPaye = parseFloat(fac.montant_regle || 0);
     setEl("tauxRecouvrement", totalFac > 0 ? Math.round((totalPaye / totalFac) * 100) + "%" : "0%");
 
+    setEl("statTotalImpayeStatic", fmt(fac.montant_restant) + " DH");
+    setEl("statTauxRecouvrementStatic", totalFac > 0 ? Math.round((totalPaye / totalFac) * 100) + "%" : "0%");
+    setEl("statNouveauxPatientsStatic", pats.filter((p) => _dateStr(p.created_at) >= moisDebut).length);
+
     const salleArr = Array.isArray(salle) ? salle : [];
     setEl("totalAttente", salleArr.filter((s) => s.statut === "En attente").length);
     setEl("attenteTotal", salleArr.length);
@@ -4103,7 +4273,7 @@ async function globalSearch(query) {
 
     try {
         // Search patients
-        const pRes  = await fetch(`${API_URL}/patients/search/${encodeURIComponent(query)}`);
+        const pRes  = await fetch(`${API_URL}/patients/search/${encodeURIComponent(query)}`, { headers: _authHeaders() });
         const pData = await pRes.json();
 
         // Search RDV by matching against loaded rdvs array
@@ -5124,7 +5294,7 @@ async function imprimerFichePatient(patientId) {
     // Charger conditions dentaires
     let dental = {};
     try {
-        const dr = await fetch(`${API_URL}/schema-dentaire/${patientId}`);
+        const dr = await fetch(`${API_URL}/schema-dentaire/${patientId}`, { headers: _authHeaders() });
         if (dr.ok) {
             const dj = await dr.json();
             if (dj.success && dj.data) dj.data.forEach(row => { dental[row.numero_dent] = row.etat; });
@@ -5134,7 +5304,7 @@ async function imprimerFichePatient(patientId) {
     // Charger RDV du patient
     let rdvList = [];
     try {
-        const rr = await fetch(`${API_URL}/rdv?patient_id=${patientId}`);
+        const rr = await fetch(`${API_URL}/rdv?patient_id=${patientId}`, { headers: _authHeaders() });
         if (rr.ok) rdvList = await rr.json();
     } catch(e) {}
 

@@ -558,17 +558,22 @@ def register_rdv_routes(app):
     @require_auth
     def rdv_list():
         d = request.args.get("date")
+        pid = request.args.get("patient_id")
         sql = """
             SELECT r.*, p.nom, p.prenom
             FROM rendez_vous r
             JOIN patient p ON r.id_patient = p.id_patient
+            WHERE 1=1
         """
-        params = ()
+        params = []
         if d:
-            sql += " WHERE r.date_rdv = %s"
-            params = (d,)
-        sql += " ORDER BY r.date_rdv ASC, r.heure_rdv ASC"
-        return jsonify(sjl(query_all(sql, params)))
+            sql += " AND r.date_rdv = %s"
+            params.append(d)
+        if pid:
+            sql += " AND r.id_patient = %s"
+            params.append(pid)
+        sql += " ORDER BY r.date_rdv DESC, r.heure_rdv DESC"
+        return jsonify(sjl(query_all(sql, tuple(params))))
 
     @app.get("/api/rdv/today")
     @require_auth
