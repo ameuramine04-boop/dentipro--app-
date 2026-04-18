@@ -254,11 +254,8 @@ function goToNewPaiement() {
 }
 
 function showAddPatient() {
-    showSection('patients');
-    setTimeout(() => {
-        document.querySelector('#patients .form-container') ?.scrollIntoView({ behavior: 'smooth' });
-        resetPatientForm();
-    }, 100);
+    // Ouvre la modal popup directement, sans naviguer vers la section patients
+    ouvrirModalNouveauPatient(null);
 }
 
 function toggleSidebar() {
@@ -2479,8 +2476,13 @@ async function ouvrirFichePatient(id) {
 }
 
 function fermerFichePatient(e) {
+    // Appelé soit par clic sur le bouton X (sans argument), soit par clic sur l'overlay
     if (e && e.target !== document.getElementById('patientFicheModal')) return;
-    document.getElementById('patientFicheModal').classList.remove('modal-open');
+    const modal = document.getElementById('patientFicheModal');
+    if (modal) {
+        modal.classList.remove('modal-open');
+        modal.style.display = 'none';
+    }
     document.body.style.overflow = '';
 }
 
@@ -4340,9 +4342,8 @@ async function globalSearch(query) {
 
 function gsrOpenPatient(id) {
     closeGlobalSearch();
-    // Show patients section and open fiche
-    showSection('patients');
-    setTimeout(() => ouvrirFichePatient(id), 200);
+    // Ouvrir directement la fiche sans naviguer vers la section patients
+    ouvrirFichePatient(id);
 }
 
 function openGlobalSearch(val) {
@@ -6253,3 +6254,674 @@ async function ajouterStockArticle() {
         } else showToast(j.error || 'Erreur', 'error');
     } catch (e) { showToast('Erreur', 'error'); }
 }
+
+// ════════════════════════════════════════════════════════════════
+// NOTIFICATIONS — Toggle + Reset badge + addNotification
+// ════════════════════════════════════════════════════════════════
+let _notifications = [];
+
+function addNotification(message, type = 'info') {
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    _notifications.unshift({ message, type, time, id: Date.now() });
+    if (_notifications.length > 30) _notifications.pop();
+
+    // Mettre à jour le badge
+    const badge = document.getElementById('notifBadge');
+    if (badge) {
+        badge.textContent = Math.min(_notifications.length, 99);
+        badge.style.display = 'inline';
+    }
+    _renderNotifications();
+}
+
+function _renderNotifications() {
+    const list = document.getElementById('notifList');
+    if (!list) return;
+    if (!_notifications.length) {
+        list.innerHTML = '<p style="padding:14px;color:#888;text-align:center;font-size:13px;">Aucune notification</p>';
+        return;
+    }
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const colors = {
+        success: 'rgba(16,185,129,.08)',
+        error:   'rgba(239,68,68,.08)',
+        warning: 'rgba(245,158,11,.08)',
+        info:    'rgba(37,99,235,.08)'
+    };
+    list.innerHTML = _notifications.map(n => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:${colors[n.type]||colors.info};transition:.15s;">
+            <span style="font-size:16px;flex-shrink:0;margin-top:1px;">${icons[n.type]||'ℹ️'}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">${n.message}</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">${n.time}</div>
+            </div>
+        </div>`).join('');
+}
+
+function toggleNotifications() {
+    const dropdown = document.getElementById('notifDropdown');
+    if (!dropdown) return;
+    const isOpen = dropdown.classList.toggle('open');
+    if (isOpen) {
+        // Réinitialiser le badge à 0 dès l'ouverture
+        const badge = document.getElementById('notifBadge');
+        if (badge) badge.style.display = 'none';
+        _renderNotifications();
+    }
+}
+
+function effacerNotifications() {
+    _notifications = [];
+    _renderNotifications();
+    const badge = document.getElementById('notifBadge');
+    if (badge) badge.style.display = 'none';
+}
+
+// Fermer le dropdown si clic en dehors
+document.addEventListener('click', function(e) {
+    const dd = document.getElementById('notifDropdown');
+    if (dd && dd.classList.contains('open')) {
+        if (!e.target.closest('[onclick="toggleNotifications()"]') && !e.target.closest('#notifDropdown')) {
+            dd.classList.remove('open');
+        }
+    }
+});
+
+// ════════════════════════════════════════════════════════════════
+// RDV AUTO-STATUT — En cours / Terminé selon l'heure (automatique)
+// L'annulation reste toujours manuelle
+// ════════════════════════════════════════════════════════════════
+async function _autoUpdateRdvStatuts() {
+    const now    = new Date();
+    const todayS = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    // Seulement les RDV d'aujourd'hui qui ne sont pas annulés
+    const toUpdate = rdvs.filter(r => {
+        const d = (r.date_rdv || '').split('T')[0];
+        if (d !== todayS) return false;
+        if (r.statut === 'Annule' || r.statut === 'Annulé') return false;
+        return true;
+    });
+
+    for (const r of toUpdate) {
+        if (!r.heure_rdv) continue;
+        const [h, m] = r.heure_rdv.split(':').map(Number);
+        const startMin = h * 60 + m;
+        const endMin   = startMin + 30; // durée supposée : 30 min
+
+        let newStatut = null;
+
+        if (nowMin >= startMin && nowMin < endMin) {
+            // Le RDV est en cours maintenant
+            if (r.statut !== 'En cours') newStatut = 'En cours';
+        } else if (nowMin >= endMin) {
+            // Le RDV est terminé
+            if (r.statut !== 'Termine' && r.statut !== 'Terminé') newStatut = 'Termine';
+        }
+
+        if (newStatut) {
+            try {
+                const res = await fetch(`${API_URL}/rdv/${r.id_rdv}`, {
+                    method: 'PUT',
+                    headers: _authHeaders(),
+                    body: JSON.stringify({ ...r, statut: newStatut })
+                });
+                if (res.ok) {
+                    r.statut = newStatut; // Mettre à jour localement
+                    addNotification(
+                        newStatut === 'En cours'
+                            ? `🕐 RDV ${r.nom} ${r.prenom} — En cours`
+                            : `✅ RDV ${r.nom} ${r.prenom} — Terminé`,
+                        newStatut === 'En cours' ? 'info' : 'success'
+                    );
+                }
+            } catch (e) { /* silencieux */ }
+        }
+    }
+
+    // Refresh la liste si la section RDV est active
+    const activeSection = document.querySelector('.section.active');
+    if (activeSection && activeSection.id === 'rdv') {
+        afficherRdvFiltre();
+    }
+    updateDashboardCounts(rdvs);
+}
+
+// Lancer le moteur auto-statut toutes les minutes
+setInterval(_autoUpdateRdvStatuts, 60 * 1000);
+// Premier appel 5 secondes après le chargement
+setTimeout(_autoUpdateRdvStatuts, 5000);
+
+// ════════════════════════════════════════════════════════════════
+// ORDONNANCES — Pagination
+// ════════════════════════════════════════════════════════════════
+
+// Override chargerOrdonnancesListe pour ajouter la pagination
+window.chargerOrdonnancesListe = async function() {
+    const tb = document.getElementById('listeOrdonnances');
+    if (!tb) return;
+    try {
+        const res = await fetch(`${API_URL}/ordonnances`);
+        const rows = await res.json();
+        _cacheOrdonnances = Array.isArray(rows) ? rows : [];
+        _dpPage.ordonnances = 1;
+        _renderOrdonnancesPage();
+    } catch (e) {
+        tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#b91c1c;">Erreur</td></tr>';
+    }
+};
+
+function _renderOrdonnancesPage() {
+    const tb = document.getElementById('listeOrdonnances');
+    if (!tb) return;
+    const rows = _cacheOrdonnances;
+    if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;">Aucune ordonnance</td></tr>';
+        dpPaginationRender('paginationOrdonnances', 'ordonnances', 1, 1, 0);
+        return;
+    }
+    const { page, totalPages } = dpEnsurePage('ordonnances', rows.length);
+    const slice = rows.slice((page - 1) * DP_PAGE_SIZE, page * DP_PAGE_SIZE);
+    tb.innerHTML = slice.map(o => `<tr>
+        <td style="font-size:12px;">${formatDateCreation(o.created_at)}</td>
+        <td><strong>${o.patient_nom} ${o.patient_prenom}</strong></td>
+        <td>${(o.titre || o.modele || '').replace(/</g,'')}</td>
+        <td>
+            <a href="${API_URL}/ordonnances/${o.id}/pdf" target="_blank" class="sec-btn-ghost sec-btn-sm" style="text-decoration:none;">📄 PDF</a>
+            <button type="button" class="sec-btn-ghost sec-btn-sm" onclick="supprimerOrdonnance(${o.id})">🗑️</button>
+        </td>
+    </tr>`).join('');
+    dpPaginationRender('paginationOrdonnances', 'ordonnances', page, totalPages, rows.length);
+}
+
+// ════════════════════════════════════════════════════════════════
+// STOCK — Pagination
+// ════════════════════════════════════════════════════════════════
+
+// Override chargerStock pour ajouter la pagination
+window.chargerStock = async function() {
+    const tb = document.getElementById('listeStock');
+    if (!tb) return;
+    try {
+        const res = await fetch(`${API_URL}/stock`);
+        const rows = await res.json();
+        _cacheStock = Array.isArray(rows) ? rows : [];
+        _dpPage.stock = 1;
+        _renderStockPage();
+    } catch (e) {
+        tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#b91c1c;">Erreur stock</td></tr>';
+    }
+};
+
+function _renderStockPage() {
+    const tb = document.getElementById('listeStock');
+    if (!tb) return;
+    const rows = _cacheStock;
+    if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Stock vide — ajoutez des articles</td></tr>';
+        dpPaginationRender('paginationStock', 'stock', 1, 1, 0);
+        return;
+    }
+    const { page, totalPages } = dpEnsurePage('stock', rows.length);
+    const slice = rows.slice((page - 1) * DP_PAGE_SIZE, page * DP_PAGE_SIZE);
+    tb.innerHTML = slice.map(s => {
+        const alerte = Number(s.quantite) <= Number(s.seuil_alerte);
+        return `<tr class="${alerte ? 'stock-alert-row' : ''}">
+            <td><strong>${(s.nom || '').replace(/</g,'')}</strong></td>
+            <td>${(s.reference || '—').replace(/</g,'')}</td>
+            <td style="font-weight:800;color:${alerte ? '#b91c1c' : 'inherit'}">${s.quantite}</td>
+            <td>${s.seuil_alerte}</td>
+            <td>${s.unite || '—'}</td>
+            <td style="white-space:nowrap;">
+                <button type="button" class="sec-btn-ghost sec-btn-sm" onclick="ajusterStock(${s.id},1)">+1</button>
+                <button type="button" class="sec-btn-ghost sec-btn-sm" onclick="ajusterStock(${s.id},-1)">−1</button>
+                <button type="button" class="sec-btn-ghost sec-btn-sm" onclick="ajusterStock(${s.id},5)">+5</button>
+            </td>
+        </tr>`;
+    }).join('');
+    dpPaginationRender('paginationStock', 'stock', page, totalPages, rows.length);
+}
+
+// Hook _dpRefresh pour les nouvelles sections (remplace les entrées initiales)
+window._dpRefresh.ordonnances = () => _renderOrdonnancesPage();
+window._dpRefresh.stock       = () => _renderStockPage();
+window._dpRefresh.historique  = () => afficherHistorique(_lastHistoriqueFiltered);
+
+// ════════════════════════════════════════════════════════
+// CABINET PROFIL — Chargement et affichage
+// ════════════════════════════════════════════════════════
+let _cabinetProfil = { nom_cabinet: '', logo_url: '' };
+
+async function chargerCabinetProfil() {
+    try {
+        const res = await fetch(`${API_URL}/cabinet`, { headers: _authHeaders() });
+        if (!res.ok) return;
+        _cabinetProfil = await res.json();
+        _applyCabinetBranding();
+    } catch (e) { /* silencieux */ }
+}
+
+function _applyCabinetBranding() {
+    const { nom_cabinet, logo_url } = _cabinetProfil;
+
+    // Topbar logo
+    const logoImg = document.getElementById('cabinetLogoImg');
+    const nomSpan = document.getElementById('cabinetNomTop');
+
+    if (logo_url && logoImg) {
+        logoImg.src = logo_url;
+        logoImg.style.display = 'block';
+    }
+    if (nom_cabinet && nomSpan) {
+        nomSpan.textContent = nom_cabinet;
+        nomSpan.style.display = 'inline';
+    }
+
+    // Sidebar branding
+    const sideInfo = document.getElementById('sidebarCabinetInfo');
+    const sideNom  = document.getElementById('sidebarCabinetNom');
+    const sideLogo = document.getElementById('sidebarCabinetLogoImg');
+
+    if (sideInfo && (nom_cabinet || logo_url)) {
+        sideInfo.style.display = 'flex';
+        if (sideNom && nom_cabinet) sideNom.textContent = nom_cabinet;
+        if (sideLogo && logo_url) { sideLogo.src = logo_url; sideLogo.style.display = 'block'; }
+        else if (sideLogo) sideLogo.style.display = 'none';
+    }
+}
+
+async function ouvrirModalProfil() {
+    document.getElementById('userMenuDropdown')?.classList.remove('open');
+    // Charger données utilisateur
+    const stored = JSON.parse(localStorage.getItem('user') || '{}');
+    const nomEl   = document.getElementById('profileNom');
+    const prenEl  = document.getElementById('profilePrenom');
+    const emEl    = document.getElementById('profileEmail');
+    if (nomEl)  nomEl.value  = stored.nom   || '';
+    if (prenEl) prenEl.value = stored.prenom || '';
+    if (emEl)   emEl.value   = stored.email  || '';
+
+    // Charger données cabinet
+    await chargerCabinetProfil();
+    const input = document.getElementById('cabinetNomInput');
+    if (input) input.value = _cabinetProfil.nom_cabinet || '';
+
+    // Aperçu logo actuel
+    const previewImg = document.getElementById('cabinetLogoPreviewImg');
+    const placeholder = document.getElementById('cabinetLogoPlaceholder');
+    if (_cabinetProfil.logo_url && previewImg) {
+        previewImg.src = _cabinetProfil.logo_url;
+        previewImg.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+    }
+
+    const modal = document.getElementById('modalProfil');
+    if (modal) { modal.style.display = 'flex'; }
+}
+
+function previewCabinetLogo(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img  = document.getElementById('cabinetLogoPreviewImg');
+        const ph   = document.getElementById('cabinetLogoPlaceholder');
+        const topImg = document.getElementById('cabinetLogoImg');
+        if (img)  { img.src = e.target.result; img.style.display = 'block'; }
+        if (ph)   ph.style.display = 'none';
+        if (topImg) { topImg.src = e.target.result; topImg.style.display = 'block'; }
+    };
+    reader.readAsDataURL(file);
+}
+
+async function sauvegarderProfilEtCabinet() {
+    // 1. Sauvegarder profil utilisateur
+    await sauvegarderProfil();
+
+    // 2. Sauvegarder nom cabinet
+    const nomCabinet = document.getElementById('cabinetNomInput')?.value?.trim() || '';
+    try {
+        await fetch(`${API_URL}/cabinet`, {
+            method: 'PUT',
+            headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nom_cabinet: nomCabinet }),
+        });
+        _cabinetProfil.nom_cabinet = nomCabinet;
+
+        // Update topbar
+        const nomSpan = document.getElementById('cabinetNomTop');
+        if (nomSpan) {
+            nomSpan.textContent = nomCabinet;
+            nomSpan.style.display = nomCabinet ? 'inline' : 'none';
+        }
+    } catch (e) { /* silencieux */ }
+
+    // 3. Uploader logo si sélectionné
+    const logoFile = document.getElementById('cabinetLogoFile');
+    if (logoFile?.files?.length) {
+        const fd = new FormData();
+        fd.append('logo', logoFile.files[0]);
+        try {
+            const res = await fetch(`${API_URL}/cabinet/logo`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+                body: fd,
+            });
+            const j = await res.json();
+            if (j.logo_url) {
+                _cabinetProfil.logo_url = j.logo_url;
+                const img = document.getElementById('cabinetLogoImg');
+                if (img) { img.src = j.logo_url; img.style.display = 'block'; }
+            }
+        } catch (e) { /* silencieux */ }
+    }
+
+    document.getElementById('modalProfil').style.display = 'none';
+    showToast('✅ Profil et cabinet sauvegardés !', 'success');
+}
+
+// ════════════════════════════════════════════════════════
+// SERVICES & TARIFS
+// ════════════════════════════════════════════════════════
+let _servicesCache = [];
+
+async function ouvrirModalServices() {
+    document.getElementById('userMenuDropdown')?.classList.remove('open');
+    const modal = document.getElementById('modalServices');
+    if (modal) { modal.style.display = 'flex'; }
+    await chargerServices();
+}
+
+async function chargerServices() {
+    try {
+        const res  = await fetch(`${API_URL}/services`, { headers: _authHeaders() });
+        const rows = await res.json();
+        _servicesCache = Array.isArray(rows) ? rows : [];
+        _renderServices();
+    } catch (e) {
+        document.getElementById('listeServices').innerHTML =
+            '<tr><td colspan="4" style="text-align:center;color:#b91c1c;">Erreur de chargement</td></tr>';
+    }
+}
+
+function _renderServices() {
+    const tb = document.getElementById('listeServices');
+    if (!tb) return;
+    if (!_servicesCache.length) {
+        tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">Aucun service — ajoutez vos actes ci-dessus</td></tr>';
+        return;
+    }
+
+    const catColors = {
+        'Général': '#3b82f6', 'Chirurgie': '#ef4444', 'Prothèse': '#8b5cf6',
+        'Orthodontie': '#f59e0b', 'Parodontologie': '#10b981', 'Esthétique': '#ec4899',
+        'Radiologie': '#06b6d4', 'Pédiatrique': '#84cc16',
+    };
+
+    tb.innerHTML = _servicesCache.map(s => {
+        const cat = s.categorie || 'Général';
+        const col = catColors[cat] || '#6b7280';
+        const prix = parseFloat(s.prix || 0).toFixed(2);
+        return `<tr>
+            <td>
+                <div style="font-weight:700;color:var(--text);">${(s.nom||'').replace(/</g,'')}</div>
+            </td>
+            <td><span style="background:${col}18;color:${col};border:1px solid ${col}33;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">${cat}</span></td>
+            <td style="text-align:right;font-weight:800;font-size:15px;color:var(--primary);font-family:var(--font-head);">${prix} <span style="font-size:11px;font-weight:500;color:var(--text-3);">MAD</span></td>
+            <td style="white-space:nowrap;">
+                <button type="button" class="sec-btn-ghost sec-btn-sm" onclick="modifierService(${s.id})" title="Modifier">✏️</button>
+                <button type="button" class="sec-btn-ghost sec-btn-sm" onclick="supprimerService(${s.id})" style="color:#ef4444;" title="Supprimer">🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // Mettre à jour les motifs dans les popups
+    _syncServicesIntoForms();
+}
+
+function _syncServicesIntoForms() {
+    // Synchroniser les services dans le select de la popup facture et dans les formulaires
+    const selects = [
+        document.getElementById('popupFactureMotif'),
+        document.getElementById('factureMotif'),
+    ];
+    selects.forEach(sel => {
+        if (!sel) return;
+        const currentVal = sel.value;
+        // Keep static options, add service options
+        const staticOpts = Array.from(sel.options).filter(o => o.dataset.static === '1' || !o.dataset.svc);
+        sel.innerHTML = '<option value="">Sélectionner un service…</option>';
+        // Re-add grouped services
+        const cats = [...new Set(_servicesCache.map(s => s.categorie || 'Général'))];
+        cats.forEach(cat => {
+            const og = document.createElement('optgroup');
+            og.label = cat;
+            _servicesCache.filter(s => (s.categorie || 'Général') === cat).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.nom;
+                opt.textContent = `${s.nom} — ${parseFloat(s.prix).toFixed(0)} MAD`;
+                opt.dataset.prix = s.prix;
+                opt.dataset.svc = '1';
+                og.appendChild(opt);
+            });
+            sel.appendChild(og);
+        });
+        sel.value = currentVal;
+    });
+}
+
+async function ajouterService() {
+    const nom  = document.getElementById('svcNom')?.value?.trim();
+    const prix = parseFloat(document.getElementById('svcPrix')?.value || 0);
+    const cat  = document.getElementById('svcCategorie')?.value || 'Général';
+    if (!nom) { showToast('Nom du service requis', 'warning'); return; }
+
+    try {
+        const res = await fetch(`${API_URL}/services`, {
+            method: 'POST',
+            headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nom, prix, categorie: cat }),
+        });
+        const j = await res.json();
+        if (j.success) {
+            showToast('✅ Service ajouté', 'success');
+            document.getElementById('svcNom').value  = '';
+            document.getElementById('svcPrix').value = '';
+            await chargerServices();
+        } else showToast(j.error || 'Erreur', 'error');
+    } catch (e) { showToast('Erreur', 'error'); }
+}
+
+function modifierService(id) {
+    const svc = _servicesCache.find(s => s.id === id);
+    if (!svc) return;
+    const nouvNom  = prompt('Nom du service :', svc.nom);
+    if (nouvNom === null) return;
+    const nouvPrix = prompt('Prix (MAD) :', svc.prix);
+    if (nouvPrix === null) return;
+    fetch(`${API_URL}/services/${id}`, {
+        method: 'PUT',
+        headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nom: nouvNom.trim(), prix: parseFloat(nouvPrix), categorie: svc.categorie }),
+    }).then(() => { showToast('✅ Service modifié', 'success'); chargerServices(); })
+      .catch(() => showToast('Erreur', 'error'));
+}
+
+async function supprimerService(id) {
+    if (!confirm('Supprimer ce service ?')) return;
+    try {
+        await fetch(`${API_URL}/services/${id}`, { method: 'DELETE', headers: _authHeaders() });
+        showToast('🗑️ Service supprimé', 'info');
+        chargerServices();
+    } catch (e) { showToast('Erreur', 'error'); }
+}
+
+// ════════════════════════════════════════════════════════
+// POPUP — Nouvelle Facture
+// ════════════════════════════════════════════════════════
+async function ouvrirModalNouvelleFacture() {
+    const modal = document.getElementById('modalNouvelleFacture');
+    if (!modal) { goToNewFacture(); return; }
+
+    // Date par défaut = aujourd'hui
+    const today = new Date().toISOString().split('T')[0];
+    const dateEl = document.getElementById('popupFactureDate');
+    if (dateEl) dateEl.value = today;
+
+    // Charger patients
+    const sel = document.getElementById('popupFacturePatient');
+    if (sel && patients && patients.length) {
+        sel.innerHTML = '<option value="">Sélectionner un patient…</option>' +
+            patients.map(p => `<option value="${p.id_patient}">${p.nom} ${p.prenom}</option>`).join('');
+    } else if (sel) {
+        try {
+            const res = await fetch(`${API_URL}/patients`, { headers: _authHeaders() });
+            const pats = await res.json();
+            sel.innerHTML = '<option value="">Sélectionner un patient…</option>' +
+                pats.map(p => `<option value="${p.id_patient}">${p.nom} ${p.prenom}</option>`).join('');
+        } catch (e) {}
+    }
+
+    // Charger services
+    if (!_servicesCache.length) await chargerServices();
+    else _syncServicesIntoForms();
+
+    modal.style.display = 'flex';
+}
+
+async function soumettreFacturePopup() {
+    const pid    = document.getElementById('popupFacturePatient')?.value;
+    const date   = document.getElementById('popupFactureDate')?.value;
+    const mont   = parseFloat(document.getElementById('popupFactureMontant')?.value || 0);
+    const motif  = document.getElementById('popupFactureMotif')?.value || '';
+    const notes  = document.getElementById('popupFactureNotes')?.value || '';
+
+    if (!pid)  { showToast('Sélectionnez un patient', 'warning'); return; }
+    if (!date) { showToast('Date requise', 'warning'); return; }
+    if (!mont) { showToast('Montant requis', 'warning'); return; }
+
+    try {
+        const res = await fetch(`${API_URL}/factures`, {
+            method: 'POST',
+            headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_patient: pid, date_facture: date, montant_total: mont, motif, notes }),
+        });
+        const j = await res.json();
+        if (j.success || j.id) {
+            document.getElementById('modalNouvelleFacture').style.display = 'none';
+            showToast('✅ Facture créée !', 'success');
+            addNotification('🧾 Nouvelle facture créée', 'success');
+            if (typeof chargerStatsPaiements === 'function') chargerStatsPaiements();
+        } else showToast(j.error || 'Erreur serveur', 'error');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+}
+
+// ════════════════════════════════════════════════════════
+// POPUP — Nouveau RDV
+// ════════════════════════════════════════════════════════
+async function ouvrirModalNouveauRdv() {
+    const modal = document.getElementById('modalNouveauRdv');
+    if (!modal) { goToNewRdv(); return; }
+
+    // Date par défaut = aujourd'hui
+    const today = new Date().toISOString().split('T')[0];
+    const dateEl = document.getElementById('popupRdvDate');
+    if (dateEl) dateEl.value = today;
+
+    // Charger patients
+    const sel = document.getElementById('popupRdvPatient');
+    if (sel) {
+        const pats = (patients && patients.length) ? patients : [];
+        if (pats.length) {
+            sel.innerHTML = '<option value="">Sélectionner un patient…</option>' +
+                pats.map(p => `<option value="${p.id_patient}">${p.nom} ${p.prenom}</option>`).join('');
+        } else {
+            try {
+                const res = await fetch(`${API_URL}/patients`, { headers: _authHeaders() });
+                const arr = await res.json();
+                sel.innerHTML = '<option value="">Sélectionner un patient…</option>' +
+                    arr.map(p => `<option value="${p.id_patient}">${p.nom} ${p.prenom}</option>`).join('');
+            } catch (e) {}
+        }
+    }
+    modal.style.display = 'flex';
+}
+
+async function soumettreRdvPopup() {
+    const pid   = document.getElementById('popupRdvPatient')?.value;
+    const date  = document.getElementById('popupRdvDate')?.value;
+    const heure = document.getElementById('popupRdvHeure')?.value;
+    const motif = document.getElementById('popupRdvMotif')?.value || 'Consultation';
+
+    if (!pid)   { showToast('Sélectionnez un patient', 'warning'); return; }
+    if (!date)  { showToast('Date requise', 'warning'); return; }
+    if (!heure) { showToast('Heure requise', 'warning'); return; }
+
+    try {
+        const res = await fetch(`${API_URL}/rdv`, {
+            method: 'POST',
+            headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_patient: pid, date_rdv: date, heure_rdv: heure, motif, statut: 'Prevu' }),
+        });
+        const j = await res.json();
+        if (j.success || j.id) {
+            document.getElementById('modalNouveauRdv').style.display = 'none';
+            showToast('✅ Rendez-vous planifié !', 'success');
+            addNotification(`📅 Nouveau RDV planifié le ${date} à ${heure}`, 'success');
+            animateBell();
+            if (typeof chargerRdv === 'function') chargerRdv();
+        } else showToast(j.error || 'Erreur', 'error');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+}
+
+// ════════════════════════════════════════════════════════
+// POPUP — Nouveau Stock
+// ════════════════════════════════════════════════════════
+function ouvrirModalNouveauStock() {
+    const modal = document.getElementById('modalNouveauStock');
+    if (!modal) return;
+    // Reset form
+    ['popupStockNom','popupStockRef'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const qte = document.getElementById('popupStockQte'); if (qte) qte.value = '0';
+    const seuil = document.getElementById('popupStockSeuil'); if (seuil) seuil.value = '5';
+    const unite = document.getElementById('popupStockUnite'); if (unite) unite.value = 'boîte';
+    modal.style.display = 'flex';
+}
+
+async function soumettreStockPopup() {
+    const nom   = document.getElementById('popupStockNom')?.value?.trim();
+    const ref   = document.getElementById('popupStockRef')?.value?.trim() || '';
+    const qte   = Number(document.getElementById('popupStockQte')?.value   || 0);
+    const seuil = Number(document.getElementById('popupStockSeuil')?.value || 5);
+    const unite = document.getElementById('popupStockUnite')?.value?.trim() || 'boîte';
+
+    if (!nom) { showToast('Nom de l\'article requis', 'warning'); return; }
+
+    try {
+        const res = await fetch(`${API_URL}/stock`, {
+            method: 'POST',
+            headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nom, reference: ref, quantite: qte, seuil_alerte: seuil, unite }),
+        });
+        const j = await res.json();
+        if (j.success) {
+            document.getElementById('modalNouveauStock').style.display = 'none';
+            showToast('✅ Article ajouté au stock !', 'success');
+            if (typeof window.chargerStock === 'function') window.chargerStock();
+        } else showToast(j.error || 'Erreur', 'error');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+}
+
+// ════════════════════════════════════════════════════════
+// AUTO-INIT — Charger cabinet profil au démarrage
+// ════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+    // Charger cabinet profil si connecté
+    const token = localStorage.getItem('token');
+    if (token) {
+        chargerCabinetProfil();
+        chargerServices();
+    }
+});

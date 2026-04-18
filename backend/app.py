@@ -309,6 +309,8 @@ def create_app():
     register_chat_routes(app)
     register_export_routes(app)
     register_extras_routes(app, query_all, execute, sj, sjl)
+    register_services_routes(app)
+    register_cabinet_routes(app)
 
     @app.route("/uploads/<path:subpath>")
     def uploads_static(subpath):
@@ -332,6 +334,132 @@ def create_app():
         return jsonify({"error": "Not found"}), 404
 
     return app
+
+
+# ──────────────────────────────────────────────────────────────
+# SERVICES & TARIFS
+# ──────────────────────────────────────────────────────────────
+def register_services_routes(app):
+    """CRUD pour la grille tarifaire des services dentaires."""
+
+    def _ensure_services_table():
+        try:
+            execute("""
+                CREATE TABLE IF NOT EXISTS service_tarif (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nom VARCHAR(200) NOT NULL,
+                    prix DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    categorie VARCHAR(100) DEFAULT 'Général',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """)
+        except Exception as e:
+            print("ensure services table:", e)
+
+    _ensure_services_table()
+
+    @app.get("/api/services")
+    @require_auth
+    def svc_list():
+        r = query_all("SELECT * FROM service_tarif ORDER BY categorie, nom ASC")
+        return jsonify(sjl(r))
+
+    @app.post("/api/services")
+    @require_auth
+    def svc_add():
+        b = request.get_json(silent=True) or {}
+        nom = (b.get("nom") or "").strip()
+        if not nom:
+            return jsonify({"error": "Nom requis"}), 400
+        iid = execute(
+            "INSERT INTO service_tarif (nom, prix, categorie) VALUES (%s, %s, %s)",
+            (nom, float(b.get("prix") or 0), b.get("categorie") or "Général"),
+            fetch_last=True,
+        )
+        return jsonify({"success": True, "id": iid})
+
+    @app.put("/api/services/<int:sid>")
+    @require_auth
+    def svc_update(sid):
+        b = request.get_json(silent=True) or {}
+        execute(
+            "UPDATE service_tarif SET nom=%s, prix=%s, categorie=%s WHERE id=%s",
+            (b.get("nom"), float(b.get("prix") or 0), b.get("categorie") or "Général", sid),
+        )
+        return jsonify({"success": True})
+
+    @app.delete("/api/services/<int:sid>")
+    @require_auth
+    def svc_del(sid):
+        execute("DELETE FROM service_tarif WHERE id=%s", (sid,))
+        return jsonify({"success": True})
+
+
+# ──────────────────────────────────────────────────────────────
+# CABINET PROFILE (nom + logo)
+# ──────────────────────────────────────────────────────────────
+UPLOAD_LOGOS = PROJECT_ROOT / "uploads" / "logos"
+UPLOAD_LOGOS.mkdir(parents=True, exist_ok=True)
+
+def register_cabinet_routes(app):
+    """Profil cabinet : nom + logo stocké en localStorage + URL."""
+
+    def _ensure_cabinet_table():
+        try:
+            execute("""
+                CREATE TABLE IF NOT EXISTS cabinet_profil (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nom_cabinet VARCHAR(200) DEFAULT '',
+                    logo_url VARCHAR(500) DEFAULT '',
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """)
+            # Insérer une ligne par défaut si vide
+            r = query_all("SELECT COUNT(*) as c FROM cabinet_profil")
+            if r and r[0]["c"] == 0:
+                execute("INSERT INTO cabinet_profil (nom_cabinet) VALUES ('')")
+        except Exception as e:
+            print("ensure cabinet table:", e)
+
+    _ensure_cabinet_table()
+
+    @app.get("/api/cabinet")
+    @require_auth
+    def cabinet_get():
+        r = query_all("SELECT * FROM cabinet_profil ORDER BY id ASC LIMIT 1")
+        return jsonify(sj(r[0]) if r else {"nom_cabinet": "", "logo_url": ""})
+
+    @app.put("/api/cabinet")
+    @require_auth
+    def cabinet_update():
+        b = request.get_json(silent=True) or {}
+        r = query_all("SELECT id FROM cabinet_profil ORDER BY id ASC LIMIT 1")
+        if r:
+            execute(
+                "UPDATE cabinet_profil SET nom_cabinet=%s WHERE id=%s",
+                (b.get("nom_cabinet") or "", r[0]["id"]),
+            )
+        return jsonify({"success": True})
+
+    @app.post("/api/cabinet/logo")
+    @require_auth
+    def cabinet_logo():
+        if "logo" not in request.files:
+            return jsonify({"error": "Aucun fichier"}), 400
+        f = request.files["logo"]
+        ext = Path(f.filename).suffix.lower()
+        if ext not in {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}:
+            return jsonify({"error": "Format non supporté"}), 400
+        name = f"logo_{int(datetime.now().timestamp()*1000)}{ext}"
+        path = UPLOAD_LOGOS / name
+        f.save(path)
+        logo_url = f"/uploads/logos/{name}"
+        r = query_all("SELECT id FROM cabinet_profil ORDER BY id ASC LIMIT 1")
+        if r:
+            execute("UPDATE cabinet_profil SET logo_url=%s WHERE id=%s", (logo_url, r[0]["id"]))
+        return jsonify({"success": True, "logo_url": logo_url})
+
 
 
 def register_patients_routes(app):
